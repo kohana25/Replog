@@ -68,10 +68,16 @@ Nothing else to configure: the app works with the stock **Confirm signup** templ
 plan. Sign-up → "Check your email" screen → open the link → come back and log in with the same
 email and password.
 
-Worth setting so the link lands somewhere sensible: **Authentication → URL Configuration →
-Site URL** is where the browser ends up after the link is clicked. Any page you own works
-(the default `http://localhost:3000` just shows a browser error *after* the account has
-already been confirmed — the confirmation still worked).
+**Set the Site URL**, or the link will appear to fail. **Authentication → URL Configuration →
+Site URL** is where Supabase sends the browser *after* it has confirmed the address. The
+default is `http://localhost:3000`, which exists on nobody's phone or tablet, so tapping the
+link on a device ends on “This site can't be reached”.
+
+The account is confirmed regardless — Supabase verifies the token on its own server before
+redirecting, so that error page is the last step failing, not the confirmation. But it looks
+like a failure, so point Site URL at any page that loads (your own site, a GitHub Pages
+“email confirmed” page, even `https://supabase.com`). The app also says as much on its
+"check your email" screen.
 
 That is the whole of the Google involvement: Gmail receives the link. There is no Google
 sign-in, no OAuth and no Google password — accounts, passwords and sessions all belong to

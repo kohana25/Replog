@@ -102,6 +102,20 @@ export default function ConfirmEmailScreen() {
           with the email and password you just chose.
         </Text>
 
+        {/*
+          Supabase confirms the address on its own server and only then sends
+          the browser on to the project's Site URL. When that address is not
+          reachable from the device — the default is http://localhost:3000,
+          which exists on nobody's phone — the browser lands on an error page
+          *after* the account has already been confirmed. Saying so here saves
+          the user assuming their sign-up failed.
+        */}
+        <Text style={[typography.caption, { color: colors.textSubtle, lineHeight: 19 }]}>
+          Your browser may show a “site can’t be reached” page after you tap the link. That is
+          only the page it was sent to afterwards — your email is confirmed either way, so come
+          back here and log in.
+        </Text>
+
         <InlineError message={formError} />
 
         {notice ? (
