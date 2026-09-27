@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { createContext, useContext } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -14,6 +14,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useResponsive } from '@/theme/useResponsive';
 
+/**
+ * Tells a nested <AppBar> that the safe-area top inset has already been
+ * applied by the Screen around it, so it does not add a second one.
+ */
+const TopInsetAppliedContext = createContext(false);
+
+export function useTopInsetApplied(): boolean {
+  return useContext(TopInsetAppliedContext);
+}
+
 interface ScreenProps {
   children: React.ReactNode;
   /** Wrap the content in a ScrollView. Turn off for FlatList screens. */
@@ -27,15 +37,25 @@ interface ScreenProps {
   refreshControl?: React.ComponentProps<typeof ScrollView>['refreshControl'];
   /** Skip the horizontal gutter (full-bleed lists). */
   edgeToEdge?: boolean;
+  /**
+   * Skip the safe-area top padding. Only for a screen that positions its own
+   * content against the very top of the display.
+   */
+  topInset?: boolean;
 }
 
 /**
  * Every screen sits inside this.
  *
  * It owns three things so no individual screen has to think about them:
- *  - the safe area (nothing lands under a notch or the home indicator)
+ *  - the safe area (nothing lands under a notch, a status bar or the home
+ *    indicator — the top inset comes from the device, so it is right on a
+ *    phone, on a tablet, and in either orientation)
  *  - the responsive horizontal gutter
  *  - capping content width on tablets instead of stretching the phone layout
+ *
+ * A screen that renders its own <AppBar> needs no extra work: the AppBar sees
+ * that the inset is already applied here and stops adding its own.
  */
 export function Screen({
   children,
@@ -46,6 +66,7 @@ export function Screen({
   style,
   refreshControl,
   edgeToEdge = false,
+  topInset = true,
 }: ScreenProps) {
   const { colors, spacing } = useTheme();
   const { gutter, contentMaxWidth } = useResponsive();
@@ -61,12 +82,16 @@ export function Screen({
     contentStyle,
   ];
 
+  // Padding rather than a margin, so scrolled content still passes under the
+  // status bar instead of being clipped by a gap.
+  const paddingTop = (topInset ? insets.top : 0) + spacing.lg;
+
   const body = scroll ? (
     <ScrollView
       style={styles.flex}
       contentContainerStyle={[
         {
-          paddingTop: spacing.lg,
+          paddingTop,
           paddingBottom: insets.bottom + spacing['3xl'] + bottomInset,
         },
       ]}
@@ -78,7 +103,7 @@ export function Screen({
       <View style={inner}>{children}</View>
     </ScrollView>
   ) : (
-    <View style={[styles.flex, inner]}>{children}</View>
+    <View style={[styles.flex, { paddingTop }, inner]}>{children}</View>
   );
 
   const content = keyboardAware ? (
@@ -94,7 +119,9 @@ export function Screen({
   );
 
   return (
-    <View style={[styles.flex, { backgroundColor: colors.background }, style]}>{content}</View>
+    <TopInsetAppliedContext.Provider value={topInset}>
+      <View style={[styles.flex, { backgroundColor: colors.background }, style]}>{content}</View>
+    </TopInsetAppliedContext.Provider>
   );
 }
 

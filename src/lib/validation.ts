@@ -13,12 +13,7 @@
  */
 const GMAIL_PATTERN = /^[a-z0-9][a-z0-9._%+-]*@gmail\.com$/i;
 
-export const GMAIL_DOMAIN = '@gmail.com';
-
 export const MIN_PASSWORD_LENGTH = 8;
-
-/** The 6-digit code emailed at sign-up. */
-export const VERIFICATION_CODE_LENGTH = 6;
 
 export function validateEmail(value: string): string | null {
   const email = value.trim();
@@ -30,47 +25,82 @@ export function validateEmail(value: string): string | null {
 /* ------------------------- password requirements ------------------------ */
 
 export interface PasswordRequirement {
-  id: 'length' | 'letter' | 'number' | 'special' | 'noSpaces';
+  id: 'length' | 'number' | 'special';
+  /** Checklist wording, e.g. "Contains a number". */
   label: string;
+  /** Sentence wording, e.g. "a number" — used to name what is still missing. */
+  shortLabel: string;
   met: boolean;
 }
 
 /**
- * The live checklist shown under the password field. Everything the user
- * sees comes from this one list, so the indicator and the submit button can
- * never disagree about whether a password is acceptable.
+ * The live checklist shown under the password field. The rules the user is
+ * shown and the rules the form enforces are this one list, so the indicator
+ * and the submit button can never disagree about whether a password passes.
+ *
+ * Spaces are not on the list because they are never allowed to reach it: the
+ * password fields strip whitespace as it is typed or pasted (see
+ * stripPasswordSpaces). isPasswordValid still refuses one, so a value that
+ * somehow arrives with a space in it cannot be submitted.
  */
 export function checkPasswordRequirements(value: string): PasswordRequirement[] {
   return [
     {
       id: 'length',
       label: `At least ${MIN_PASSWORD_LENGTH} characters`,
+      shortLabel: `at least ${MIN_PASSWORD_LENGTH} characters`,
       met: value.length >= MIN_PASSWORD_LENGTH,
     },
-    { id: 'letter', label: 'Contains a letter', met: /[a-z]/i.test(value) },
-    { id: 'number', label: 'Contains a number', met: /\d/.test(value) },
+    {
+      id: 'number',
+      label: 'Contains a number',
+      shortLabel: 'a number',
+      met: /\d/.test(value),
+    },
     {
       id: 'special',
       label: 'Contains a special character',
+      shortLabel: 'a special character',
       // Anything that is not a letter, a digit or whitespace — @ ! # $ % & * ?
       // and friends all qualify.
       met: /[^a-z0-9\s]/i.test(value),
     },
-    // An empty password has no spaces, but showing this one as already met
-    // before the user has typed anything reads as a pass they did not earn.
-    { id: 'noSpaces', label: 'No spaces', met: value.length > 0 && !/\s/.test(value) },
   ];
 }
 
+/**
+ * Remove every whitespace character. Applied on change, so it covers a typed
+ * space, a pasted value, and an autofilled one alike.
+ */
+export function stripPasswordSpaces(value: string): string {
+  return value.replace(/\s/g, '');
+}
+
 export function isPasswordValid(value: string): boolean {
+  if (/\s/.test(value)) return false;
   return checkPasswordRequirements(value).every((requirement) => requirement.met);
 }
 
+/**
+ * The submit-time message. The checklist under the field is only shown while
+ * that field has focus, so this names the requirements that are still missing
+ * rather than pointing at a list the user may not be able to see.
+ */
 export function validatePassword(value: string): string | null {
   if (!value) return 'Please enter your password.';
   if (/\s/.test(value)) return 'Passwords cannot contain spaces.';
-  if (!isPasswordValid(value)) return 'Please complete all password requirements.';
-  return null;
+
+  const missing = checkPasswordRequirements(value)
+    .filter((requirement) => !requirement.met)
+    .map((requirement) => requirement.shortLabel);
+
+  if (missing.length === 0) return null;
+
+  const list =
+    missing.length === 1
+      ? missing[0]
+      : `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}`;
+  return `Your password still needs ${list}.`;
 }
 
 export function validateConfirmPassword(password: string, confirm: string): string | null {
@@ -79,19 +109,9 @@ export function validateConfirmPassword(password: string, confirm: string): stri
   return null;
 }
 
-/** The emailed sign-up code: exactly six digits, nothing else. */
-export function validateVerificationCode(value: string): string | null {
-  const code = value.trim();
-  if (!code) return 'Please enter the verification code.';
-  if (!new RegExp(`^\\d{${VERIFICATION_CODE_LENGTH}}$`).test(code)) {
-    return `Please enter the ${VERIFICATION_CODE_LENGTH}-digit code from your email.`;
-  }
-  return null;
-}
-
 /** Strip anything that is not a digit, and cap the length, as the user types. */
-export function sanitizeVerificationCode(value: string): string {
-  return value.replace(/\D/g, '').slice(0, VERIFICATION_CODE_LENGTH);
+export function sanitizeVerificationCode(value: string, length = 6): string {
+  return value.replace(/\D/g, '').slice(0, length);
 }
 
 export function validateFullName(value: string): string | null {
@@ -190,7 +210,7 @@ export function authErrorMessage(error: unknown): string {
     return 'Incorrect email or password.';
   }
   if (isEmailNotConfirmedError(error)) {
-    return 'Please verify your email address to continue.';
+    return 'Please confirm your email first — open the link we sent you.';
   }
   if (code === 'user_already_exists' || raw.includes('already registered')) {
     return 'An account with this email already exists. Please log in instead.';
@@ -199,10 +219,10 @@ export function authErrorMessage(error: unknown): string {
     return 'Please complete all password requirements.';
   }
   if (isEmailSendRateLimit(raw, code)) {
-    return 'Please wait a moment before requesting another code.';
+    return 'Please wait a moment before asking for another email.';
   }
   if (isEmailSendFailure(raw)) {
-    return "We couldn't send the verification code. Please try again in a moment.";
+    return "We couldn't send the confirmation email. Please try again in a moment.";
   }
   // Only a genuine request-rate limit reaches this line.
   if (code === 'over_request_rate_limit' || raw.includes('rate limit') || status === 429) {
@@ -222,34 +242,6 @@ export function authErrorMessage(error: unknown): string {
     return 'That reset link has expired. Please request a new one.';
   }
   return 'Something went wrong. Please try again.';
-}
-
-/**
- * Messages for the sign-up verification screen. Wrong and expired codes look
- * almost identical coming out of Supabase, so they are separated here rather
- * than in authErrorMessage(), which the password-reset screen also uses.
- */
-export function verificationErrorMessage(error: unknown): string {
-  const { raw, code } = normalise(error);
-
-  // Supabase answers a mistyped code and an expired one with the same
-  // "expired or is invalid" text. Guessing which it was would be worse than
-  // saying both, so this branch covers the two and offers the way out of each.
-  if (raw.includes('expired or is invalid') || raw.includes('invalid or has expired')) {
-    return 'That code is incorrect or has expired. Check your Gmail, or request a new code.';
-  }
-  if (code === 'otp_expired' || raw.includes('expired')) {
-    return 'This verification code has expired. Please request a new code.';
-  }
-  if (
-    code === 'otp_disabled' ||
-    raw.includes('invalid token') ||
-    raw.includes('token not found') ||
-    raw.includes('invalid otp')
-  ) {
-    return 'Incorrect verification code. Please check your Gmail and try again.';
-  }
-  return authErrorMessage(error);
 }
 
 /** Generic data-layer errors (queries, inserts). */

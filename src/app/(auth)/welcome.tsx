@@ -15,7 +15,9 @@ export default function WelcomeScreen() {
 
   return (
     <Screen scroll={false}>
-      <View style={[styles.container, { paddingTop: insets.top + spacing['4xl'] }]}>
+      {/* Screen already applies the safe-area inset; this is the extra
+          breathing room the splash-style layout wants on top of it. */}
+      <View style={[styles.container, { paddingTop: spacing['3xl'] }]}>
         <View style={{ alignItems: 'center', gap: spacing.lg }}>
           <Image
             source={require('@/assets/images/splash-icon.png')}

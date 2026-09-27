@@ -3,16 +3,17 @@
  * supabase.auth directly — that keeps the session rules in one place.
  *
  * Accounts live in this project's own Supabase Auth/Postgres instance and are
- * authenticated with an email and password. The user's Gmail address is only
- * ever used as the address the 6-digit verification code is emailed to; there
- * is no Google sign-in and Google never controls the app's session.
+ * authenticated with an email and password. Sign-up emails Supabase's standard
+ * confirmation link ({{ .ConfirmationURL }}) to the user's Gmail address; the
+ * address is only where that link is delivered. There is no Google sign-in and
+ * Google never controls the app's session.
  */
 
 import type { Session, Subscription, User } from '@supabase/supabase-js';
 
 import { supabase } from '@/lib/supabase';
 
-/** How long the user must wait between requests for a new code. */
+/** How long the user must wait between requests for another confirmation email. */
 export const RESEND_COOLDOWN_SECONDS = 30;
 
 export interface SignUpInput {
@@ -26,8 +27,8 @@ export interface SignUpResult {
   session: Session | null;
   /**
    * True when the project requires email confirmation: the account row exists
-   * and a verification code has been emailed, but there is no session until
-   * the code is entered.
+   * and the confirmation link has been emailed, but there is no session until
+   * the user opens that link.
    */
   needsEmailConfirmation: boolean;
   /**
@@ -66,36 +67,48 @@ function dedupe<T>(key: string, run: () => Promise<T>): Promise<T> {
   return promise;
 }
 
-/* ------------------------- resend code cooldown ------------------------ */
+/* --------------------------- resend cooldown --------------------------- */
 
 /**
- * When a code was last emailed to each address. Kept in the module rather
- * than in screen state so leaving the verification screen and coming back
- * does not hand out a fresh allowance of emails.
+ * When a confirmation email was last sent to each address. Kept in the module
+ * rather than in screen state so leaving the screen and coming back does not
+ * hand out a fresh allowance of emails.
  */
-const lastCodeSentAt = new Map<string, number>();
+const lastEmailSentAt = new Map<string, number>();
 
-function markCodeSent(email: string): void {
-  lastCodeSentAt.set(normaliseEmail(email), Date.now());
+function markEmailSent(email: string): void {
+  lastEmailSentAt.set(normaliseEmail(email), Date.now());
 }
 
 /**
- * Thrown when a code is requested during the cooldown. It carries its own
- * user-ready message so the screen does not report it as a server failure.
+ * Thrown when another email is requested during the cooldown. It carries its
+ * own user-ready message so the screen does not report it as a server failure.
  */
 export class ResendCooldownError extends Error {
+  static readonly errorName = 'ResendCooldownError';
+
   readonly secondsRemaining: number;
 
   constructor(secondsRemaining: number) {
-    super(`Please wait ${secondsRemaining}s before requesting another code.`);
-    this.name = 'ResendCooldownError';
+    super(`Please wait ${secondsRemaining}s before asking for another email.`);
+    this.name = ResendCooldownError.errorName;
     this.secondsRemaining = secondsRemaining;
   }
 }
 
-/** Seconds left before another code may be requested; 0 when it is allowed. */
+/**
+ * True for the cooldown error above. Checked by name as well as by identity:
+ * a bundler that re-instantiates the module, or a toolchain that transpiles
+ * the class, can defeat `instanceof` on an Error subclass.
+ */
+export function isResendCooldownError(error: unknown): boolean {
+  if (error instanceof ResendCooldownError) return true;
+  return (error as { name?: string } | null)?.name === ResendCooldownError.errorName;
+}
+
+/** Seconds left before another email may be requested; 0 when it is allowed. */
 export function secondsUntilResendAllowed(email: string): number {
-  const sentAt = lastCodeSentAt.get(normaliseEmail(email));
+  const sentAt = lastEmailSentAt.get(normaliseEmail(email));
   if (!sentAt) return 0;
 
   const elapsed = (Date.now() - sentAt) / 1000;
@@ -123,8 +136,9 @@ export async function signUp({ email, password, fullName }: SignUpInput): Promis
       Boolean(data.user) && !data.session && (data.user?.identities?.length ?? 1) === 0;
     const needsEmailConfirmation = Boolean(data.user) && !data.session && !alreadyRegistered;
 
-    // Sign-up itself emails the first code, so the cooldown starts here.
-    if (needsEmailConfirmation) markCodeSent(address);
+    // Sign-up itself sends the first confirmation email, so the cooldown
+    // starts here rather than on the first resend.
+    if (needsEmailConfirmation) markEmailSent(address);
 
     return {
       user: data.user,
@@ -150,13 +164,13 @@ export async function signIn(email: string, password: string): Promise<Session> 
 }
 
 /**
- * Email another sign-up verification code.
+ * Email the confirmation link again.
  *
- * `auth.resend` re-sends the code for the existing unconfirmed user — calling
+ * `auth.resend` re-sends it for the existing unconfirmed user — calling
  * signUp() again would be the wrong tool: it counts as a second registration
  * attempt and burns the email-send allowance.
  */
-export async function resendVerificationCode(email: string): Promise<void> {
+export async function resendConfirmationEmail(email: string): Promise<void> {
   const address = normaliseEmail(email);
 
   return dedupe(`resend:${address}`, async () => {
@@ -166,33 +180,7 @@ export async function resendVerificationCode(email: string): Promise<void> {
     const { error } = await supabase.auth.resend({ type: 'signup', email: address });
     if (error) throw error;
 
-    markCodeSent(address);
-  });
-}
-
-/**
- * Exchange the 6-digit code from the sign-up email for a real session — this
- * is what both confirms the address and logs the user in, so registration
- * never bounces back to the login screen. Supabase invalidates the code as
- * part of this call, so it cannot be replayed.
- */
-export async function verifyEmailCode(email: string, code: string): Promise<Session> {
-  const address = normaliseEmail(email);
-
-  return dedupe(`verify:${address}`, async () => {
-    const { data, error } = await supabase.auth.verifyOtp({
-      email: address,
-      token: code.trim(),
-      type: 'signup',
-    });
-
-    if (error) throw error;
-    if (!data.session) throw new Error('Could not verify that code');
-
-    // A used code is spent: clear the cooldown so a later sign-up on this
-    // device is not held back by it.
-    lastCodeSentAt.delete(address);
-    return data.session;
+    markEmailSent(address);
   });
 }
 

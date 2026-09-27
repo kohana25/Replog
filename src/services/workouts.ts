@@ -1,4 +1,5 @@
 import { unwrap, unwrapMaybe } from '@/lib/db';
+import { localDateKey } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import type { NewRecordRow, UUID } from '@/types/database';
 import type {
@@ -205,6 +206,35 @@ export async function listWorkoutHistory(page = 0): Promise<WorkoutHistoryPage> 
   });
 
   return { items, hasMore };
+}
+
+/**
+ * The local calendar days between `from` and `to` on which the user actually
+ * completed a workout — what the Home calendar marks.
+ *
+ * Only `status = 'completed'` rows count, so a routine that was opened,
+ * planned or abandoned mid-session never marks a day. The returned set is
+ * keyed by the day *in the device's timezone*, which also collapses two
+ * workouts on the same day into one entry.
+ */
+export async function getWorkoutDays(from: Date, to: Date): Promise<Set<string>> {
+  const result = await supabase
+    .from('workouts')
+    .select('completed_at')
+    .eq('status', 'completed')
+    .not('completed_at', 'is', null)
+    .gte('completed_at', from.toISOString())
+    .lte('completed_at', to.toISOString());
+
+  const rows = unwrap<{ completed_at: string | null }[]>(result) ?? [];
+
+  const days = new Set<string>();
+  for (const row of rows) {
+    if (!row.completed_at) continue;
+    const key = localDateKey(row.completed_at);
+    if (key) days.add(key);
+  }
+  return days;
 }
 
 export async function getRecentWorkouts(limit = 3): Promise<WorkoutSummary[]> {

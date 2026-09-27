@@ -38,6 +38,37 @@ function startOfDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
+/**
+ * "2026-03-07" for the day this instant falls on *in the device's timezone*.
+ *
+ * Deliberately not toISOString().slice(0, 10), which is UTC: a workout
+ * finished at 11pm would otherwise land on the next day's square in the
+ * calendar for anyone east of Greenwich, and on the previous day's west of it.
+ */
+export function localDateKey(value: Date | string | number): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/** Midnight local time on the first of the month `value` falls in. */
+export function startOfMonth(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth(), 1);
+}
+
+/** The last millisecond of the month `value` falls in, local time. */
+export function endOfMonth(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth() + 1, 0, 23, 59, 59, 999);
+}
+
+/** "March 2026" in the device's locale. */
+export function formatMonthYear(value: Date): string {
+  return value.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
 /** "Today", "Yesterday", "Sep 12" or "Sep 12, 2025" for other years. */
 export function formatRelativeDate(iso: string | null | undefined): string {
   if (!iso) return '—';

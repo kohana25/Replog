@@ -15,6 +15,7 @@ import {
   authErrorMessage,
   isPasswordValid,
   sanitizeVerificationCode,
+  stripPasswordSpaces,
   validateConfirmPassword,
   validateEmail,
   validatePassword,
@@ -142,19 +143,20 @@ export default function ResetPasswordScreen() {
             <Input
               label="New password"
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(next) => setPassword(stripPasswordSpaces(next))}
               error={errors.password}
               secure
               autoCapitalize="none"
               autoComplete="new-password"
             />
             {/* Same live checklist as sign-up: one password policy, shown the
-                same way wherever a password is chosen. */}
-            <PasswordRequirements password={password} />
+                same way wherever a password is chosen — once there is a
+                password being typed. */}
+            {password.length > 0 ? <PasswordRequirements password={password} /> : null}
             <Input
               label="Confirm new password"
               value={confirm}
-              onChangeText={setConfirm}
+              onChangeText={(next) => setConfirm(stripPasswordSpaces(next))}
               error={errors.confirm}
               secure
               autoCapitalize="none"

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 
 import { checkPasswordRequirements } from '@/lib/validation';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -12,6 +12,12 @@ import { useTheme } from '@/theme/ThemeProvider';
  * flips the moment it is satisfied rather than waiting for a submit. Met
  * requirements turn green *and* swap the outline circle for a filled check —
  * status is never carried by colour alone.
+ *
+ * The sign-up screen mounts this only while the password field has focus and
+ * holds a password, so it fades itself in rather than snapping into the form.
+ *
+ * Spaces are not listed: they are stripped from the field as they are typed
+ * or pasted, so there is no rule for the user to satisfy.
  */
 export function PasswordRequirements({
   password,
@@ -24,14 +30,25 @@ export function PasswordRequirements({
   const requirements = checkPasswordRequirements(password);
   const metCount = requirements.filter((requirement) => requirement.met).length;
 
+  const appear = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const animation = Animated.timing(appear, {
+      toValue: 1,
+      duration: 140,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [appear]);
+
   return (
-    <View
+    <Animated.View
       accessible
       accessibilityLabel={`${label} ${metCount} of ${requirements.length} met. ${requirements
         .map((requirement) => `${requirement.label}: ${requirement.met ? 'met' : 'not met'}`)
         .join('. ')}`}
       accessibilityLiveRegion="polite"
-      style={{ gap: spacing.xs }}
+      style={{ gap: spacing.xs, opacity: appear }}
     >
       <Text style={[typography.caption, { color: colors.textMuted, fontWeight: '600' }]}>
         {label}
@@ -58,7 +75,7 @@ export function PasswordRequirements({
           </Text>
         </View>
       ))}
-    </View>
+    </Animated.View>
   );
 }
 

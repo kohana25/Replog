@@ -56,28 +56,35 @@ you need to.
 > Do **not** copy the `service_role` key. It bypasses Row Level Security, and anything
 > bundled into a mobile app can be extracted from it. It must never leave a server.
 
-### 2.4 Email verification (required — sign-up emails a 6-digit code)
+### 2.4 Email confirmation (required — Supabase's default link, no template editing)
 
-Accounts are **Gmail-only** and the address is verified with a code that the app emails at
+Accounts are **Gmail-only** and the address is confirmed by the link Supabase emails at
 sign-up, so email confirmation has to stay **on**:
 
 **Authentication → Sign In / Providers → Email** — leave *Confirm email* **checked**.
 
-Then make the code visible in the email. Edit **Authentication → Emails → Confirm signup**
-so the template contains the token rather than only a link:
+Nothing else to configure: the app works with the stock **Confirm signup** template and its
+`{{ .ConfirmationURL }}` link, so you do not need to edit any email template or be on a paid
+plan. Sign-up → "Check your email" screen → open the link → come back and log in with the same
+email and password.
 
-```html
-<h2>Confirm your RepLog account</h2>
-<p>Enter this code in the app:</p>
-<p><strong>{{ .Token }}</strong></p>
-```
+**Set the Site URL**, or the link will appear to fail. **Authentication → URL Configuration →
+Site URL** is where Supabase sends the browser *after* it has confirmed the address. The
+default is `http://localhost:3000`, which exists on nobody's phone or tablet, so tapping the
+link on a device ends on “This site can't be reached”.
 
-That is the whole of the Google involvement: Gmail receives the code. There is no Google
+The account is confirmed regardless — Supabase verifies the token on its own server before
+redirecting, so that error page is the last step failing, not the confirmation. But it looks
+like a failure, so point Site URL at any page that loads (your own site, a GitHub Pages
+“email confirmed” page, even `https://supabase.com`). The app also says as much on its
+"check your email" screen.
+
+That is the whole of the Google involvement: Gmail receives the link. There is no Google
 sign-in, no OAuth and no Google password — accounts, passwords and sessions all belong to
 this project's own Supabase Auth instance.
 
 If you do uncheck *Confirm email*, the app still works: sign-up gets a session immediately
-and goes straight to Home, skipping the code screen.
+and goes straight to Home, skipping the "check your email" screen.
 
 > Supabase's built-in email sender is rate-limited (a handful of messages per hour, and one
 > per address every few seconds). The app has a 30-second resend cooldown so you do not hit
@@ -86,9 +93,8 @@ and goes straight to Home, skipping the code screen.
 
 ### 2.5 Password reset
 
-The reset flow emails a code. To make it work, edit
-**Authentication → Emails → Reset Password** and make sure the template includes the token,
-for example:
+Password reset is unchanged and still works two ways. The typed-code path needs the token in
+the email, so edit **Authentication → Emails → Reset Password** and include it:
 
 ```html
 <h2>Reset your RepLog password</h2>
@@ -99,9 +105,10 @@ for example:
 Then in the app: *Forgot password?* → enter your email → *I have a reset code* → type the
 code. This works in Expo Go.
 
-The app also accepts a deep link (`replog://reset-password?token_hash=...`) if you add
-`replog://*` under **Authentication → URL Configuration → Redirect URLs**. Deep links need a
-development build; the code route is the reliable path in Expo Go.
+If you cannot edit that template, use the link instead: the app accepts a deep link
+(`replog://reset-password?token_hash=...`) once you add `replog://*` under
+**Authentication → URL Configuration → Redirect URLs**. Deep links need a development build;
+the typed code is the reliable path in Expo Go.
 
 ---
 
@@ -142,7 +149,7 @@ supabase/
 
 src/
 ├── app/                 screens — file-based routes (Expo Router)
-│   ├── (auth)/          welcome, login, signup, verify-email, forgot/reset password
+│   ├── (auth)/          welcome, login, signup, confirm-email, forgot/reset password
 │   ├── (tabs)/          home, workout, progress, exercises, profile
 │   ├── workout/         active logger, completion, history, detail
 │   ├── routines/        builder (create + edit), detail
@@ -167,30 +174,35 @@ in one place and means a schema change touches one file, not twelve.
 
 ## 5. How the important parts work
 
-### Signing up, and why verification ends on Home
+### Signing up, and confirming the email
 
 Registration is the app's own, against Supabase Auth in this project. The Gmail address is
-only the inbox the code is delivered to — Google never holds the session.
+only the inbox the confirmation link is delivered to — Google never holds the session.
 
 ```
 Gmail + password  →  account created (password hashed by Supabase, never stored by the app)
-                  →  6-digit code emailed
-                  →  code entered  →  session issued  →  Home
+                  →  confirmation link emailed ({{ .ConfirmationURL }}, stock template)
+                  →  "Check your email" screen, with Resend
+                  →  user opens the link  →  address confirmed
+                  →  log in with the same email and password  →  Home
 ```
 
-The last two arrows are one call: `supabase.auth.verifyOtp({ type: 'signup' })` both confirms
-the address and returns a session, so a new user is signed in by verifying and never has to
-retype their email and password on the login screen. Supabase invalidates the code as part of
-that call, so it cannot be reused, and it expires on its own after a short while.
+There is no code to type: confirmation happens in the email, which is why no email template
+needs editing. The confirmation screen's only job is to say which address the link went to
+and to send it again if it never arrived — `auth.resend`, so asking for another email never
+registers a second account. It hands the address to the login screen, so logging in
+afterwards is one field, not two.
 
-The password rules — 8+ characters, a letter, a number, a special character, no spaces — live
-in `src/lib/validation.ts` as one list. `PasswordRequirements` renders that list live under
-the field and the submit button is disabled until every item passes, so the checklist and the
-button can never disagree.
+A login attempt on an unconfirmed account lands on that same screen rather than a dead-end
+error, and `AuthProvider` handles the session the usual way from there: `signIn` stores it,
+`onAuthStateChange` keeps following it, and the root layout switches to Home the moment it
+exists.
 
-Logging in with an account that was never verified goes to the code screen with a fresh code
-rather than a dead-end error, and it reuses the existing account: `auth.resend` re-sends the
-code for the unconfirmed user instead of registering again.
+The password rules — 8+ characters, a number, a special character, no spaces — live in
+`src/lib/validation.ts` as one list. `PasswordRequirements` renders that list live under the
+field **while the password field has focus**, and hides when any other field takes focus;
+`validatePassword` checks the same list on submit and names whatever is still missing, so the
+rules the user is shown and the rules the form enforces cannot drift apart.
 
 ### Why "Too many attempts" used to appear when it shouldn't
 
@@ -201,11 +213,11 @@ Three separate causes, all fixed:
    perfectly reasonable request for a second code was enough to trigger it.
    `authErrorMessage` now separates the email-send throttle from a real request-rate limit and
    says which it is.
-2. **Verification was a dead end.** Sign-up used to finish on "check your email → go to log
-   in", so people came back and submitted the *sign-up form* again. Each re-submit called
-   `auth.signUp` for the same address, which emails another confirmation and trips the
-   throttle. There is now a verification screen with its own **Resend code** button, on a
-   30-second cooldown, that calls `auth.resend`.
+2. **Confirmation was a dead end.** Sign-up used to finish on a screen whose only exit was
+   the login page, so people came back and submitted the *sign-up form* again. Each re-submit
+   called `auth.signUp` for the same address, which emails another confirmation and trips the
+   throttle. The confirmation screen now has its own **Resend confirmation email** button, on
+   a 30-second cooldown, that calls `auth.resend`.
 3. **Nothing stopped a request being sent twice.** A double tap, or the keyboard's "go" key
    landing on the same frame as a press, sent two identical requests — and the second one is
    what Supabase counts. `src/services/auth.ts` now keeps one in-flight promise per
@@ -296,10 +308,11 @@ timezone, not UTC, so it matches the calendar you actually look at.
   Custom exercises are private to whoever created them.
 - Passwords are sent straight to Supabase Auth, which stores a bcrypt hash. The app never
   stores, logs or transmits a password anywhere else, and never sees the stored hash.
-- Verification codes are generated and checked by Supabase: random, time-limited, tied to the
+- Confirmation links are generated and checked by Supabase: random, time-limited, tied to the
   one address, single-use, and throttled per address. The app adds a 30-second resend cooldown
   in front of them rather than relaxing any of that.
-- Emails are Gmail-only by validation, and the code is the proof the address is real.
+- Emails are Gmail-only by validation, and opening the emailed link is the proof the address
+  is real.
 - The app ships only the publishable key. The service-role key appears nowhere. No SMTP
   credential or email API key is in the client — Supabase sends the mail server-side.
 - Logging out clears the local session. It never deletes your data.
@@ -338,12 +351,14 @@ npm run typecheck
 
 ### Manual checks worth doing on a device
 
-**Registration** — sign up with a Gmail address and a password like `Fitness1!`. Watch the
-requirement list turn green as you type; the button stays disabled until it all does. Try
-`you@yahoo.com` (rejected), `password` (no number, no special character) and `Pass 123!` (has
-a space). Submit, check Gmail for the code, enter it — you should land on **Home**, already
-signed in, without ever seeing the login screen. Try a wrong code first: it should say so and
-let you try again.
+**Registration** — sign up with a Gmail address and a password like `Fitness1!`. Tap the
+password field: the requirement list appears under it and turns green as you type. Tap the
+name, email or confirm field: it disappears. Tap the password field again: it is back. Then
+try `you@yahoo.com` (rejected), `password` (submit tells you it needs a number and a special
+character) and `Pass 123!` (rejected for the space). Submit a good one, open the link in
+Gmail, come back, and log in with the same email and password — the address is pre-filled.
+You should land on **Home**. Logging in *before* opening the link should take you to the
+"confirm your email" screen, not a dead end.
 
 **Session** — sign up, force-quit the app, reopen it. You should land on Home with no login
 screen at any point. Then log out and back in; your data should still be there.
@@ -361,8 +376,8 @@ horizontal scrolling, no clipped text, nothing under the notch or home indicator
 
 ## 8. What is and is not built
 
-**Working, end to end:** sign-up with Gmail verification codes, login, logout, password reset,
-persistent sessions, profile,
+**Working, end to end:** sign-up with emailed Gmail confirmation, login, logout, password
+reset, persistent sessions, profile,
 exercise library with search and filters, custom exercises, routine create/edit/delete/
 duplicate, live workout logging with previous-performance hints, rest timer, supersets field
 (stored, minimal UI), workout history with pagination, workout detail, exercise history and
@@ -398,9 +413,9 @@ background sync. Supersets can be stored on a routine but there is no grouping U
 | --- | --- |
 | "Finish the Supabase setup" screen | `.env` missing or malformed; restart with `npx expo start -c` |
 | Expo Go SDK mismatch | `npx expo install --fix` |
-| Login always fails | The address was never verified — the app now sends you to the code screen; enter the code (§2.4) |
-| The verification email has a link but no code | The **Confirm signup** template is missing `{{ .Token }}` (§2.4) |
-| "Please wait a moment before requesting another code." | Supabase's per-address email throttle. Wait for the countdown; add your own SMTP for heavy testing (§2.4) |
+| Login always fails | The address was never confirmed — the app sends you to the "check your email" screen; open the emailed link, then log in (§2.4) |
+| The confirmation link ends on a browser error page | Expected with the default Site URL. The account is confirmed anyway; point Site URL at a page you own (§2.4) |
+| "Please wait a moment before asking for another email." | Supabase's per-address email throttle. Wait for the countdown; add your own SMTP for heavy testing (§2.4) |
 | Exercises list is empty | `0004_seed_exercises.sql` has not been run |
 | "You do not have permission" | RLS migration `0002_rls.sql` has not been run |
 | Stale bundle after editing `.env` | `npx expo start -c` |

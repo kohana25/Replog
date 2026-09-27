@@ -37,6 +37,12 @@ export function Input({
   secure = false,
   suffix,
   containerStyle,
+  // Pulled out of `rest` so a caller can watch focus without replacing the
+  // handlers that drive the focused border below, and so an explicit
+  // accessibility label still wins over the field's visible label.
+  onFocus,
+  onBlur,
+  accessibilityLabel,
   ...rest
 }: InputProps) {
   const { colors, radius, typography, spacing } = useTheme();
@@ -67,18 +73,24 @@ export function Input({
         ]}
       >
         <TextInput
+          {...rest}
           value={value}
           onChangeText={onChangeText}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onFocus={(event) => {
+            setFocused(true);
+            onFocus?.(event);
+          }}
+          onBlur={(event) => {
+            setFocused(false);
+            onBlur?.(event);
+          }}
           secureTextEntry={secure && !revealed}
           placeholderTextColor={colors.textSubtle}
-          accessibilityLabel={label}
+          accessibilityLabel={accessibilityLabel ?? label}
           style={[
             styles.input,
             { color: colors.text, fontSize: typography.body.fontSize },
           ]}
-          {...rest}
         />
 
         {suffix ? (

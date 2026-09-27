@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Keyboard, Pressable, Text, View } from 'react-native';
 
 import {
   AppBar,
@@ -14,7 +14,7 @@ import {
 import { experienceLabel, goalLabel } from '@/lib/format';
 import {
   authErrorMessage,
-  isPasswordValid,
+  stripPasswordSpaces,
   validateConfirmPassword,
   validateEmail,
   validateFullName,
@@ -39,9 +39,10 @@ const LEVELS: ExperienceLevel[] = ['beginner', 'intermediate', 'advanced'];
 /**
  * Registration against the app's own Supabase Auth instance.
  *
- * The account is created here, a 6-digit code is emailed to the Gmail address,
- * and the verification screen exchanges that code for a session. There is no
- * Google sign-in: the Gmail address is only where the code is delivered.
+ * The account is created here and Supabase emails its standard confirmation
+ * link to the address. The next screen says so; the user opens the link and
+ * then logs in with the same email and password. No Google sign-in is
+ * involved — the Gmail address is only where the link is delivered.
  */
 export default function SignUpScreen() {
   const { colors, typography, spacing } = useTheme();
@@ -59,11 +60,31 @@ export default function SignUpScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const passwordComplete = isPasswordValid(password);
+  /**
+   * The requirement checklist belongs to the password field, so it appears
+   * only once that field is being edited *and* has something in it — never on
+   * an untouched form. Focusing any other input blurs the password, which
+   * hides it again.
+   */
+  const [passwordFocused, setPasswordFocused] = useState(false);
+  const showPasswordRequirements = passwordFocused && password.length > 0;
+
+  /** Focusing another text field. Blur alone would do it; this is immediate. */
+  const leavePassword = () => setPasswordFocused(false);
+
+  /**
+   * Chips are not text inputs, so tapping one does not move focus by itself
+   * (the ScrollView keeps taps from dismissing the keyboard). Dismissing it
+   * explicitly blurs the password field, which is what hides the checklist.
+   */
+  const leavePasswordForChips = () => {
+    Keyboard.dismiss();
+    setPasswordFocused(false);
+  };
 
   const handleSubmit = async () => {
-    // The button is disabled while a request is in flight; this is the guard
-    // for the keyboard's return key arriving on the same frame as a tap.
+    // The button shows a spinner while a request is in flight; this is the
+    // guard for the keyboard's return key arriving on the same frame as a tap.
     if (submitting) return;
 
     const nextErrors = {
@@ -74,6 +95,8 @@ export default function SignUpScreen() {
     };
     setErrors(nextErrors);
     setFormError(null);
+    // An invalid password can never be submitted: validatePassword() names
+    // whichever requirements are still missing and the request is not sent.
     if (Object.values(nextErrors).some(Boolean)) return;
 
     setSubmitting(true);
@@ -89,15 +112,9 @@ export default function SignUpScreen() {
       }
 
       if (result.needsEmailConfirmation) {
-        // Straight to the code screen — verifying is what logs the user in,
-        // so registration never detours via the login page.
         router.replace({
-          pathname: '/(auth)/verify-email',
-          params: {
-            email: email.trim().toLowerCase(),
-            ...(goal ? { goal } : {}),
-            ...(level ? { level } : {}),
-          },
+          pathname: '/(auth)/confirm-email',
+          params: { email: email.trim().toLowerCase() },
         });
         return;
       }
@@ -133,6 +150,7 @@ export default function SignUpScreen() {
           label="Full name"
           value={fullName}
           onChangeText={setFullName}
+          onFocus={leavePassword}
           error={errors.fullName}
           placeholder="Your name"
           autoComplete="name"
@@ -143,8 +161,9 @@ export default function SignUpScreen() {
           label="Email"
           value={email}
           onChangeText={setEmail}
+          onFocus={leavePassword}
           error={errors.email}
-          helper="Use your Gmail address — that is where your code is sent."
+          helper="Use your Gmail address — that is where your confirmation link is sent."
           placeholder="you@gmail.com"
           autoCapitalize="none"
           autoComplete="email"
@@ -157,7 +176,11 @@ export default function SignUpScreen() {
           <Input
             label="Password"
             value={password}
-            onChangeText={setPassword}
+            // Whitespace never makes it into the value, so a space cannot be
+            // typed, pasted or autofilled into a password.
+            onChangeText={(next) => setPassword(stripPasswordSpaces(next))}
+            onFocus={() => setPasswordFocused(true)}
+            onBlur={() => setPasswordFocused(false)}
             error={errors.password}
             placeholder="Create a password"
             secure
@@ -166,13 +189,15 @@ export default function SignUpScreen() {
             textContentType="newPassword"
           />
 
-          <PasswordRequirements password={password} />
+          {/* Only once the user is actually entering a password. */}
+          {showPasswordRequirements ? <PasswordRequirements password={password} /> : null}
         </View>
 
         <Input
           label="Confirm password"
           value={confirm}
-          onChangeText={setConfirm}
+          onChangeText={(next) => setConfirm(stripPasswordSpaces(next))}
+          onFocus={leavePassword}
           error={errors.confirm}
           placeholder="Repeat your password"
           secure
@@ -189,7 +214,10 @@ export default function SignUpScreen() {
             label="What are you training for?"
             options={GOALS.map((value) => ({ value, label: goalLabel(value) }))}
             value={goal}
-            onChange={setGoal}
+            onChange={(next) => {
+              leavePasswordForChips();
+              setGoal(next);
+            }}
             allowClear={false}
           />
 
@@ -197,7 +225,10 @@ export default function SignUpScreen() {
             label="Experience"
             options={LEVELS.map((value) => ({ value, label: experienceLabel(value) }))}
             value={level}
-            onChange={setLevel}
+            onChange={(next) => {
+              leavePasswordForChips();
+              setLevel(next);
+            }}
             allowClear={false}
           />
         </View>
@@ -209,12 +240,6 @@ export default function SignUpScreen() {
           onPress={handleSubmit}
           loading={submitting}
           loadingLabel="Creating your account…"
-          // Nothing incomplete can be submitted, and nothing can be submitted
-          // twice: this is half of why spurious rate-limit errors appeared.
-          disabled={!passwordComplete}
-          accessibilityHint={
-            passwordComplete ? undefined : 'Complete every password requirement to continue.'
-          }
           size="lg"
         />
 

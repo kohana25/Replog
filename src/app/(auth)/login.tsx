@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { AppBar, Button, InlineError, Input, Screen } from '@/components/ui';
@@ -10,20 +10,30 @@ import { useTheme } from '@/theme/ThemeProvider';
 /**
  * Password login against the app's own Supabase Auth instance.
  *
- * There is no "continue with Google": the account's password is the app's own,
- * and a verified user goes straight to Home without seeing a code again.
+ * There is no "continue with Google": the account's password is the app's own.
+ * A confirmed user goes straight to Home; an unconfirmed one is sent to the
+ * screen that explains the emailed confirmation link.
  */
 export default function LoginScreen() {
   const { colors, typography, spacing } = useTheme();
   const router = useRouter();
   const { signIn } = useAuth();
 
-  const [email, setEmail] = useState('');
+  // Sign-up and the confirmation screen hand the address over, so logging in
+  // after confirming an email is one field rather than two.
+  const params = useLocalSearchParams<{ email?: string }>();
+  const prefilledEmail = (params.email ?? '').trim().toLowerCase();
+
+  const [email, setEmail] = useState(prefilledEmail);
   const [password, setPassword] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (prefilledEmail) setEmail(prefilledEmail);
+  }, [prefilledEmail]);
 
   const handleSubmit = async () => {
     // The button is disabled while the request is in flight; this also stops
@@ -46,12 +56,12 @@ export default function LoginScreen() {
       // The root layout routes to the app as soon as the session lands.
     } catch (error) {
       if (isEmailNotConfirmedError(error)) {
-        // The account exists but was never verified. Finish that here rather
-        // than leaving the user on a dead-end error: the verification screen
-        // asks for a fresh code and signs them in once it is entered.
+        // The account exists but its address was never confirmed. Say so on
+        // the screen that can do something about it — it explains the emailed
+        // link and can send another one — rather than as a dead-end error.
         router.push({
-          pathname: '/(auth)/verify-email',
-          params: { email: email.trim().toLowerCase(), resend: '1' },
+          pathname: '/(auth)/confirm-email',
+          params: { email: email.trim().toLowerCase(), reason: 'unconfirmed' },
         });
         return;
       }
