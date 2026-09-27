@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import {
   AppBar,
@@ -14,6 +14,7 @@ import {
   StatCard,
 } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
+import { confirmAction, notify } from '@/lib/alert';
 import {
   formatDuration,
   formatLongDate,
@@ -39,22 +40,21 @@ export default function WorkoutDetailScreen() {
 
   const { data, error, isLoading, refetch } = useAsync(() => getWorkout(id as string), [id]);
 
-  const handleDelete = () => {
-    Alert.alert('Delete this workout?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteWorkout(id as string);
-            router.back();
-          } catch {
-            Alert.alert('Could not delete', 'Please try again.');
-          }
-        },
-      },
-    ]);
+  const handleDelete = async () => {
+    const confirmed = await confirmAction({
+      title: 'Delete this workout?',
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await deleteWorkout(id as string);
+      router.back();
+    } catch {
+      notify('Could not delete', 'Please try again.');
+    }
   };
 
   return (
@@ -66,7 +66,7 @@ export default function WorkoutDetailScreen() {
           data ? (
             <IconButton
               icon="trash-outline"
-              onPress={handleDelete}
+              onPress={() => void handleDelete()}
               accessibilityLabel="Delete this workout"
               color={colors.danger}
             />

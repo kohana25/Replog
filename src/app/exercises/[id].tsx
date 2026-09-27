@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { LineChart } from '@/components/charts/LineChart';
 import {
@@ -15,6 +15,7 @@ import {
   SectionHeader,
 } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
+import { confirmAction, notify } from '@/lib/alert';
 import {
   equipmentLabel,
   experienceLabel,
@@ -54,29 +55,24 @@ export default function ExerciseDetailScreen() {
 
   const isOwner = Boolean(data?.exercise?.created_by && data.exercise.created_by === user?.id);
 
-  const handleDelete = () => {
-    Alert.alert(
-      'Delete this exercise?',
-      'Workouts that already used it keep their logged sets.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteCustomExercise(id as string);
-              router.back();
-            } catch {
-              Alert.alert(
-                'Could not delete',
-                'This exercise may still be used by a routine. Remove it there first.',
-              );
-            }
-          },
-        },
-      ],
-    );
+  const handleDelete = async () => {
+    const confirmed = await confirmAction({
+      title: 'Delete this exercise?',
+      message: 'Workouts that already used it keep their logged sets.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await deleteCustomExercise(id as string);
+      router.back();
+    } catch {
+      notify(
+        'Could not delete',
+        'This exercise may still be used by a routine. Remove it there first.',
+      );
+    }
   };
 
   // The RPC returns newest first; charts read left-to-right in time order.
@@ -91,7 +87,7 @@ export default function ExerciseDetailScreen() {
             <IconButton
               icon="trash-outline"
               color={colors.danger}
-              onPress={handleDelete}
+              onPress={() => void handleDelete()}
               accessibilityLabel="Delete this custom exercise"
             />
           ) : null

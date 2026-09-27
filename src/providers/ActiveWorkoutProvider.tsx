@@ -131,6 +131,13 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
 
   const restoredRef = useRef(false);
 
+  /**
+   * The draft as of this render, readable from an event handler without
+   * putting `draft` in every callback's dependency list.
+   */
+  const draftRef = useRef<ActiveWorkoutDraft | null>(draft);
+  draftRef.current = draft;
+
   /* ------------------------- restore on launch ------------------------- */
   useEffect(() => {
     let cancelled = false;
@@ -426,36 +433,42 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
    */
   const toggleSetCompleted = useCallback(
     (exerciseLocalId: string, setLocalId: string): boolean => {
-      let becameComplete = false;
-      let restSeconds = 0;
+      // Decide from the current draft rather than from inside the state
+      // updater. React does not promise to run an updater synchronously, so
+      // reading a flag it assigned is a race: when it loses, the caller gets
+      // no haptic and the rest timer never starts.
+      const exercise = draftRef.current?.exercises.find(
+        (item) => item.localId === exerciseLocalId,
+      );
+      const target = exercise?.sets.find((set) => set.localId === setLocalId);
+      if (!exercise || !target) return false;
+
+      const becameComplete = !target.completed;
 
       setDraft((current) => {
         if (!current) return current;
         return {
           ...current,
-          exercises: current.exercises.map((exercise) => {
-            if (exercise.localId !== exerciseLocalId) return exercise;
+          exercises: current.exercises.map((item) => {
+            if (item.localId !== exerciseLocalId) return item;
 
-            const history = previousSets[exercise.exerciseId] ?? [];
+            const history = previousSets[item.exerciseId] ?? [];
 
             return {
-              ...exercise,
-              sets: exercise.sets.map((set) => {
+              ...item,
+              sets: item.sets.map((set) => {
                 if (set.localId !== setLocalId) return set;
 
                 if (set.completed) return { ...set, completed: false };
 
-                becameComplete = true;
-                restSeconds = exercise.restSeconds;
-
                 const reference =
-                  history.find((item) => item.set_number === set.setNumber) ??
+                  history.find((entry) => entry.set_number === set.setNumber) ??
                   history[history.length - 1];
 
                 const needsLoad =
-                  exercise.exerciseType === 'strength' || exercise.exerciseType === 'bodyweight';
+                  item.exerciseType === 'strength' || item.exerciseType === 'bodyweight';
                 const needsDuration =
-                  exercise.exerciseType === 'duration' || exercise.exerciseType === 'cardio';
+                  item.exerciseType === 'duration' || item.exerciseType === 'cardio';
 
                 return {
                   ...set,
@@ -473,8 +486,8 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
         };
       });
 
-      if (becameComplete && restSeconds > 0) {
-        startRest(restSeconds, 'Rest');
+      if (becameComplete && exercise.restSeconds > 0) {
+        startRest(exercise.restSeconds, 'Rest');
       }
       return becameComplete;
     },

@@ -1,7 +1,7 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActiveExerciseCard } from '@/components/workout/ActiveExerciseCard';
@@ -17,6 +17,7 @@ import {
   Screen,
 } from '@/components/ui';
 import { useElapsedSeconds } from '@/hooks/useTick';
+import { confirmAction, notify } from '@/lib/alert';
 import { formatClock, pluralize } from '@/lib/format';
 import { formatVolume } from '@/lib/units';
 import { useActiveWorkout } from '@/providers/ActiveWorkoutProvider';
@@ -92,49 +93,48 @@ export default function ActiveWorkoutScreen() {
     );
   }
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
     if (totals.sets === 0) {
-      Alert.alert(
+      notify(
         'Nothing logged yet',
         'Tick off at least one set before finishing, or discard this workout.',
       );
       return;
     }
 
-    Alert.alert('Finish workout?', `${pluralize(totals.sets, 'set')} will be saved.`, [
-      { text: 'Keep going', style: 'cancel' },
-      {
-        text: 'Finish',
-        onPress: async () => {
-          try {
-            const result = await finishWorkout();
-            router.replace({
-              pathname: '/workout/complete',
-              params: {
-                workoutId: result.workoutId,
-                stats: JSON.stringify(result.stats),
-              },
-            });
-          } catch {
-            // The error is surfaced inline below; the draft is kept for a retry.
-          }
+    const confirmed = await confirmAction({
+      title: 'Finish workout?',
+      message: `${pluralize(totals.sets, 'set')} will be saved.`,
+      confirmLabel: 'Finish',
+      cancelLabel: 'Keep going',
+    });
+    if (!confirmed) return;
+
+    try {
+      const result = await finishWorkout();
+      router.replace({
+        pathname: '/workout/complete',
+        params: {
+          workoutId: result.workoutId,
+          stats: JSON.stringify(result.stats),
         },
-      },
-    ]);
+      });
+    } catch {
+      // The error is surfaced inline below; the draft is kept for a retry.
+    }
   };
 
-  const handleDiscard = () => {
-    Alert.alert('Discard workout?', 'Everything logged in this session will be lost.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Discard',
-        style: 'destructive',
-        onPress: () => {
-          discardWorkout();
-          router.replace('/(tabs)/workout');
-        },
-      },
-    ]);
+  const handleDiscard = async () => {
+    const confirmed = await confirmAction({
+      title: 'Discard workout?',
+      message: 'Everything logged in this session will be lost.',
+      confirmLabel: 'Discard',
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    discardWorkout();
+    router.replace('/(tabs)/workout');
   };
 
   return (
@@ -210,14 +210,14 @@ export default function ActiveWorkoutScreen() {
                 onUpdateSet={(setLocalId, patch) => updateSet(exercise.localId, setLocalId, patch)}
                 onToggleSet={(setLocalId) => toggleSetCompleted(exercise.localId, setLocalId)}
                 onRemoveExercise={() =>
-                  Alert.alert('Remove exercise?', `${exercise.name} and its sets will be removed.`, [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Remove',
-                      style: 'destructive',
-                      onPress: () => removeExercise(exercise.localId),
-                    },
-                  ])
+                  void confirmAction({
+                    title: 'Remove exercise?',
+                    message: `${exercise.name} and its sets will be removed.`,
+                    confirmLabel: 'Remove',
+                    destructive: true,
+                  }).then((confirmed) => {
+                    if (confirmed) removeExercise(exercise.localId);
+                  })
                 }
                 onMove={(direction) => moveExercise(exercise.localId, direction)}
                 onOpenExercise={() => router.push(`/exercises/${exercise.exerciseId}`)}
@@ -263,7 +263,7 @@ export default function ActiveWorkoutScreen() {
             label="Discard workout"
             variant="ghost"
             icon="trash-outline"
-            onPress={handleDiscard}
+            onPress={() => void handleDiscard()}
           />
         </View>
       </ScrollView>
@@ -296,7 +296,7 @@ export default function ActiveWorkoutScreen() {
           size="lg"
           variant="accent"
           loading={syncStatus === 'saving'}
-          onPress={handleFinish}
+          onPress={() => void handleFinish()}
         />
       </View>
 
