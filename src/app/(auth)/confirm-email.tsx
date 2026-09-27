@@ -8,7 +8,7 @@ import { authErrorMessage } from '@/lib/validation';
 import { useAuth } from '@/providers/AuthProvider';
 import {
   RESEND_COOLDOWN_SECONDS,
-  ResendCooldownError,
+  isResendCooldownError,
   secondsUntilResendAllowed,
 } from '@/services/auth';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -60,8 +60,10 @@ export default function ConfirmEmailScreen() {
       setCooldownUntil(Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
       setNotice(`We sent another confirmation email to ${email}.`);
     } catch (error) {
+      // The cooldown error already carries a user-ready message; anything
+      // else is a server error and gets the mapped one.
       setFormError(
-        error instanceof ResendCooldownError ? error.message : authErrorMessage(error),
+        isResendCooldownError(error) ? (error as Error).message : authErrorMessage(error),
       );
     } finally {
       setResending(false);

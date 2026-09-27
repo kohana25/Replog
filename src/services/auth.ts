@@ -67,7 +67,7 @@ function dedupe<T>(key: string, run: () => Promise<T>): Promise<T> {
   return promise;
 }
 
-/* ------------------------- resend code cooldown ------------------------ */
+/* --------------------------- resend cooldown --------------------------- */
 
 /**
  * When a confirmation email was last sent to each address. Kept in the module
@@ -85,13 +85,25 @@ function markEmailSent(email: string): void {
  * own user-ready message so the screen does not report it as a server failure.
  */
 export class ResendCooldownError extends Error {
+  static readonly errorName = 'ResendCooldownError';
+
   readonly secondsRemaining: number;
 
   constructor(secondsRemaining: number) {
     super(`Please wait ${secondsRemaining}s before asking for another email.`);
-    this.name = 'ResendCooldownError';
+    this.name = ResendCooldownError.errorName;
     this.secondsRemaining = secondsRemaining;
   }
+}
+
+/**
+ * True for the cooldown error above. Checked by name as well as by identity:
+ * a bundler that re-instantiates the module, or a toolchain that transpiles
+ * the class, can defeat `instanceof` on an Error subclass.
+ */
+export function isResendCooldownError(error: unknown): boolean {
+  if (error instanceof ResendCooldownError) return true;
+  return (error as { name?: string } | null)?.name === ResendCooldownError.errorName;
 }
 
 /** Seconds left before another email may be requested; 0 when it is allowed. */
