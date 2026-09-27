@@ -56,15 +56,33 @@ you need to.
 > Do **not** copy the `service_role` key. It bypasses Row Level Security, and anything
 > bundled into a mobile app can be extracted from it. It must never leave a server.
 
-### 2.4 Email confirmation (optional, but easier off while developing)
+### 2.4 Email verification (required — sign-up emails a 6-digit code)
 
-By default Supabase asks new users to confirm their email before they can log in. For a
-school project you will probably want that off:
+Accounts are **Gmail-only** and the address is verified with a code that the app emails at
+sign-up, so email confirmation has to stay **on**:
 
-**Authentication → Sign In / Providers → Email → uncheck "Confirm email"**.
+**Authentication → Sign In / Providers → Email** — leave *Confirm email* **checked**.
 
-If you leave it on, the app handles it — sign-up shows a "check your email" screen instead
-of logging you straight in.
+Then make the code visible in the email. Edit **Authentication → Emails → Confirm signup**
+so the template contains the token rather than only a link:
+
+```html
+<h2>Confirm your RepLog account</h2>
+<p>Enter this code in the app:</p>
+<p><strong>{{ .Token }}</strong></p>
+```
+
+That is the whole of the Google involvement: Gmail receives the code. There is no Google
+sign-in, no OAuth and no Google password — accounts, passwords and sessions all belong to
+this project's own Supabase Auth instance.
+
+If you do uncheck *Confirm email*, the app still works: sign-up gets a session immediately
+and goes straight to Home, skipping the code screen.
+
+> Supabase's built-in email sender is rate-limited (a handful of messages per hour, and one
+> per address every few seconds). The app has a 30-second resend cooldown so you do not hit
+> it by accident. For heavier testing, add your own SMTP under
+> **Authentication → Emails → SMTP Settings**.
 
 ### 2.5 Password reset
 
@@ -124,7 +142,7 @@ supabase/
 
 src/
 ├── app/                 screens — file-based routes (Expo Router)
-│   ├── (auth)/          welcome, login, signup, forgot/reset password
+│   ├── (auth)/          welcome, login, signup, verify-email, forgot/reset password
 │   ├── (tabs)/          home, workout, progress, exercises, profile
 │   ├── workout/         active logger, completion, history, detail
 │   ├── routines/        builder (create + edit), detail
@@ -148,6 +166,54 @@ in one place and means a schema change touches one file, not twelve.
 ---
 
 ## 5. How the important parts work
+
+### Signing up, and why verification ends on Home
+
+Registration is the app's own, against Supabase Auth in this project. The Gmail address is
+only the inbox the code is delivered to — Google never holds the session.
+
+```
+Gmail + password  →  account created (password hashed by Supabase, never stored by the app)
+                  →  6-digit code emailed
+                  →  code entered  →  session issued  →  Home
+```
+
+The last two arrows are one call: `supabase.auth.verifyOtp({ type: 'signup' })` both confirms
+the address and returns a session, so a new user is signed in by verifying and never has to
+retype their email and password on the login screen. Supabase invalidates the code as part of
+that call, so it cannot be reused, and it expires on its own after a short while.
+
+The password rules — 8+ characters, a letter, a number, a special character, no spaces — live
+in `src/lib/validation.ts` as one list. `PasswordRequirements` renders that list live under
+the field and the submit button is disabled until every item passes, so the checklist and the
+button can never disagree.
+
+Logging in with an account that was never verified goes to the code screen with a fresh code
+rather than a dead-end error, and it reuses the existing account: `auth.resend` re-sends the
+code for the unconfirmed user instead of registering again.
+
+### Why "Too many attempts" used to appear when it shouldn't
+
+Three separate causes, all fixed:
+
+1. **Every 429 was reported as a rate limit on *attempts*.** Supabase's per-address email
+   throttle ("you can only request this after N seconds") also arrives as a 429, and one
+   perfectly reasonable request for a second code was enough to trigger it.
+   `authErrorMessage` now separates the email-send throttle from a real request-rate limit and
+   says which it is.
+2. **Verification was a dead end.** Sign-up used to finish on "check your email → go to log
+   in", so people came back and submitted the *sign-up form* again. Each re-submit called
+   `auth.signUp` for the same address, which emails another confirmation and trips the
+   throttle. There is now a verification screen with its own **Resend code** button, on a
+   30-second cooldown, that calls `auth.resend`.
+3. **Nothing stopped a request being sent twice.** A double tap, or the keyboard's "go" key
+   landing on the same frame as a press, sent two identical requests — and the second one is
+   what Supabase counts. `src/services/auth.ts` now keeps one in-flight promise per
+   operation, so a duplicate call joins the request already running instead of starting
+   another.
+
+None of the underlying protections were weakened: the throttle, the code expiry and the
+single-use codes are all still enforced by Supabase.
 
 ### Staying logged in
 
@@ -228,7 +294,14 @@ timezone, not UTC, so it matches the calendar you actually look at.
   attach a set to someone else's session even by guessing an ID.
 - The public exercise library is readable by any signed-in user and writable by none of them.
   Custom exercises are private to whoever created them.
-- The app ships only the publishable key. The service-role key appears nowhere.
+- Passwords are sent straight to Supabase Auth, which stores a bcrypt hash. The app never
+  stores, logs or transmits a password anywhere else, and never sees the stored hash.
+- Verification codes are generated and checked by Supabase: random, time-limited, tied to the
+  one address, single-use, and throttled per address. The app adds a 30-second resend cooldown
+  in front of them rather than relaxing any of that.
+- Emails are Gmail-only by validation, and the code is the proof the address is real.
+- The app ships only the publishable key. The service-role key appears nowhere. No SMTP
+  credential or email API key is in the client — Supabase sends the mail server-side.
 - Logging out clears the local session. It never deletes your data.
 
 ---
@@ -265,6 +338,13 @@ npm run typecheck
 
 ### Manual checks worth doing on a device
 
+**Registration** — sign up with a Gmail address and a password like `Fitness1!`. Watch the
+requirement list turn green as you type; the button stays disabled until it all does. Try
+`you@yahoo.com` (rejected), `password` (no number, no special character) and `Pass 123!` (has
+a space). Submit, check Gmail for the code, enter it — you should land on **Home**, already
+signed in, without ever seeing the login screen. Try a wrong code first: it should say so and
+let you try again.
+
 **Session** — sign up, force-quit the app, reopen it. You should land on Home with no login
 screen at any point. Then log out and back in; your data should still be there.
 
@@ -281,7 +361,8 @@ horizontal scrolling, no clipped text, nothing under the notch or home indicator
 
 ## 8. What is and is not built
 
-**Working, end to end:** sign-up, login, logout, password reset, persistent sessions, profile,
+**Working, end to end:** sign-up with Gmail verification codes, login, logout, password reset,
+persistent sessions, profile,
 exercise library with search and filters, custom exercises, routine create/edit/delete/
 duplicate, live workout logging with previous-performance hints, rest timer, supersets field
 (stored, minimal UI), workout history with pagination, workout detail, exercise history and
@@ -317,7 +398,9 @@ background sync. Supersets can be stored on a routine but there is no grouping U
 | --- | --- |
 | "Finish the Supabase setup" screen | `.env` missing or malformed; restart with `npx expo start -c` |
 | Expo Go SDK mismatch | `npx expo install --fix` |
-| Login always fails | Email confirmation is on and the address is unconfirmed (§2.4) |
+| Login always fails | The address was never verified — the app now sends you to the code screen; enter the code (§2.4) |
+| The verification email has a link but no code | The **Confirm signup** template is missing `{{ .Token }}` (§2.4) |
+| "Please wait a moment before requesting another code." | Supabase's per-address email throttle. Wait for the countdown; add your own SMTP for heavy testing (§2.4) |
 | Exercises list is empty | `0004_seed_exercises.sql` has not been run |
 | "You do not have permission" | RLS migration `0002_rls.sql` has not been run |
 | Stale bundle after editing `.env` | `npx expo start -c` |

@@ -2,9 +2,19 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 
-import { AppBar, Button, InlineError, Input, LoadingState, Screen } from '@/components/ui';
+import {
+  AppBar,
+  Button,
+  InlineError,
+  Input,
+  LoadingState,
+  PasswordRequirements,
+  Screen,
+} from '@/components/ui';
 import {
   authErrorMessage,
+  isPasswordValid,
+  sanitizeVerificationCode,
   validateConfirmPassword,
   validateEmail,
   validatePassword,
@@ -63,6 +73,8 @@ export default function ResetPasswordScreen() {
   }, [isRecovering, isAuthenticated]);
 
   const handleVerifyCode = async () => {
+    if (submitting) return;
+
     const emailError = validateEmail(email);
     const codeError = code.trim() ? null : 'Enter the code from the email.';
     setErrors({ email: emailError, code: codeError });
@@ -81,6 +93,8 @@ export default function ResetPasswordScreen() {
   };
 
   const handleSetPassword = async () => {
+    if (submitting) return;
+
     const nextErrors = {
       password: validatePassword(password),
       confirm: validateConfirmPassword(password, confirm),
@@ -130,11 +144,13 @@ export default function ResetPasswordScreen() {
               value={password}
               onChangeText={setPassword}
               error={errors.password}
-              helper="At least 8 characters."
               secure
               autoCapitalize="none"
               autoComplete="new-password"
             />
+            {/* Same live checklist as sign-up: one password policy, shown the
+                same way wherever a password is chosen. */}
+            <PasswordRequirements password={password} />
             <Input
               label="Confirm new password"
               value={confirm}
@@ -149,6 +165,8 @@ export default function ResetPasswordScreen() {
               label="Update password"
               onPress={handleSetPassword}
               loading={submitting}
+              loadingLabel="Updating…"
+              disabled={!isPasswordValid(password)}
               size="lg"
             />
           </>
@@ -170,10 +188,13 @@ export default function ResetPasswordScreen() {
             <Input
               label="Reset code"
               value={code}
-              onChangeText={setCode}
+              onChangeText={(next) => setCode(sanitizeVerificationCode(next))}
               error={errors.code}
               placeholder="123456"
               keyboardType="number-pad"
+              autoComplete="one-time-code"
+              textContentType="oneTimeCode"
+              maxLength={6}
               autoCapitalize="none"
             />
             <InlineError message={formError} />

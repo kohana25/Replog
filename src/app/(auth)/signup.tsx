@@ -2,10 +2,19 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { AppBar, Button, InlineError, Input, OptionGroup, Screen } from '@/components/ui';
+import {
+  AppBar,
+  Button,
+  InlineError,
+  Input,
+  OptionGroup,
+  PasswordRequirements,
+  Screen,
+} from '@/components/ui';
 import { experienceLabel, goalLabel } from '@/lib/format';
 import {
   authErrorMessage,
+  isPasswordValid,
   validateConfirmPassword,
   validateEmail,
   validateFullName,
@@ -27,6 +36,13 @@ const GOALS: FitnessGoal[] = [
 
 const LEVELS: ExperienceLevel[] = ['beginner', 'intermediate', 'advanced'];
 
+/**
+ * Registration against the app's own Supabase Auth instance.
+ *
+ * The account is created here, a 6-digit code is emailed to the Gmail address,
+ * and the verification screen exchanges that code for a session. There is no
+ * Google sign-in: the Gmail address is only where the code is delivered.
+ */
 export default function SignUpScreen() {
   const { colors, typography, spacing } = useTheme();
   const router = useRouter();
@@ -42,9 +58,14 @@ export default function SignUpScreen() {
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [confirmationSent, setConfirmationSent] = useState(false);
+
+  const passwordComplete = isPasswordValid(password);
 
   const handleSubmit = async () => {
+    // The button is disabled while a request is in flight; this is the guard
+    // for the keyboard's return key arriving on the same frame as a tap.
+    if (submitting) return;
+
     const nextErrors = {
       fullName: validateFullName(fullName),
       email: validateEmail(email),
@@ -59,13 +80,30 @@ export default function SignUpScreen() {
     try {
       const result = await signUp({ email, password, fullName });
 
-      if (result.needsEmailConfirmation) {
-        setConfirmationSent(true);
+      if (result.alreadyRegistered) {
+        setErrors((current) => ({
+          ...current,
+          email: 'An account with this email already exists. Please log in instead.',
+        }));
         return;
       }
 
-      // Optional onboarding answers go straight onto the profile the
-      // handle_new_user trigger just created.
+      if (result.needsEmailConfirmation) {
+        // Straight to the code screen — verifying is what logs the user in,
+        // so registration never detours via the login page.
+        router.replace({
+          pathname: '/(auth)/verify-email',
+          params: {
+            email: email.trim().toLowerCase(),
+            ...(goal ? { goal } : {}),
+            ...(level ? { level } : {}),
+          },
+        });
+        return;
+      }
+
+      // Email confirmation is switched off in the Supabase project, so the
+      // session already exists and the root layout is about to show Home.
       if (result.user && (goal || level)) {
         try {
           await updateProfile(result.user.id, {
@@ -83,26 +121,13 @@ export default function SignUpScreen() {
     }
   };
 
-  if (confirmationSent) {
-    return (
-      <Screen>
-        <AppBar title="Check your email" />
-        <View style={{ gap: spacing.lg, paddingTop: spacing['3xl'] }}>
-          <Text style={[typography.h1, { color: colors.text }]}>Confirm your email</Text>
-          <Text style={[typography.body, { color: colors.textMuted, lineHeight: 22 }]}>
-            We sent a confirmation link to {email.trim()}. Open it, then come back and log in.
-          </Text>
-          <Button label="Go to log in" onPress={() => router.replace('/(auth)/login')} />
-        </View>
-      </Screen>
-    );
-  }
-
   return (
     <Screen keyboardAware>
       <AppBar title="Sign up" />
       <View style={{ gap: spacing.lg, paddingTop: spacing.xl }}>
-        <Text style={[typography.h1, { color: colors.text }]}>Create your account</Text>
+        <Text accessibilityRole="header" style={[typography.h1, { color: colors.text }]}>
+          Create your account
+        </Text>
 
         <Input
           label="Full name"
@@ -119,7 +144,8 @@ export default function SignUpScreen() {
           value={email}
           onChangeText={setEmail}
           error={errors.email}
-          placeholder="you@example.com"
+          helper="Use your Gmail address — that is where your code is sent."
+          placeholder="you@gmail.com"
           autoCapitalize="none"
           autoComplete="email"
           keyboardType="email-address"
@@ -127,18 +153,21 @@ export default function SignUpScreen() {
           autoCorrect={false}
         />
 
-        <Input
-          label="Password"
-          value={password}
-          onChangeText={setPassword}
-          error={errors.password}
-          helper="At least 8 characters."
-          placeholder="Create a password"
-          secure
-          autoCapitalize="none"
-          autoComplete="new-password"
-          textContentType="newPassword"
-        />
+        <View style={{ gap: spacing.md }}>
+          <Input
+            label="Password"
+            value={password}
+            onChangeText={setPassword}
+            error={errors.password}
+            placeholder="Create a password"
+            secure
+            autoCapitalize="none"
+            autoComplete="new-password"
+            textContentType="newPassword"
+          />
+
+          <PasswordRequirements password={password} />
+        </View>
 
         <Input
           label="Confirm password"
@@ -175,7 +204,19 @@ export default function SignUpScreen() {
 
         <InlineError message={formError} />
 
-        <Button label="Create account" onPress={handleSubmit} loading={submitting} size="lg" />
+        <Button
+          label="Create account"
+          onPress={handleSubmit}
+          loading={submitting}
+          loadingLabel="Creating your account…"
+          // Nothing incomplete can be submitted, and nothing can be submitted
+          // twice: this is half of why spurious rate-limit errors appeared.
+          disabled={!passwordComplete}
+          accessibilityHint={
+            passwordComplete ? undefined : 'Complete every password requirement to continue.'
+          }
+          size="lg"
+        />
 
         <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
           <Text style={[typography.body, { color: colors.textMuted }]}>

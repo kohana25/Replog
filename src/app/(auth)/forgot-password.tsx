@@ -19,6 +19,8 @@ export default function ForgotPasswordScreen() {
   const [sent, setSent] = useState(false);
 
   const handleSubmit = async () => {
+    if (submitting) return;
+
     const nextError = validateEmail(email);
     setError(nextError);
     setFormError(null);
@@ -67,7 +69,7 @@ export default function ForgotPasswordScreen() {
               value={email}
               onChangeText={setEmail}
               error={error}
-              placeholder="you@example.com"
+              placeholder="you@gmail.com"
               autoCapitalize="none"
               autoComplete="email"
               keyboardType="email-address"
@@ -76,7 +78,13 @@ export default function ForgotPasswordScreen() {
             />
 
             <InlineError message={formError} />
-            <Button label="Send reset link" onPress={handleSubmit} loading={submitting} size="lg" />
+            <Button
+              label="Send reset link"
+              onPress={handleSubmit}
+              loading={submitting}
+              loadingLabel="Sending…"
+              size="lg"
+            />
           </>
         )}
       </View>

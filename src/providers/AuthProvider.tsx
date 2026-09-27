@@ -36,6 +36,12 @@ interface AuthContextValue {
   isRecovering: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (input: authService.SignUpInput) => Promise<authService.SignUpResult>;
+  /**
+   * Exchange the emailed 6-digit code for a session. Verifying is also what
+   * signs the new user in, which is why sign-up never returns to Login.
+   */
+  verifyEmailCode: (email: string, code: string) => Promise<Session>;
+  resendVerificationCode: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   setProfile: (profile: ProfileRow) => void;
@@ -137,6 +143,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return result;
   }, []);
 
+  const verifyEmailCode = useCallback(async (email: string, code: string) => {
+    const next = await authService.verifyEmailCode(email, code);
+    setSession(next);
+    return next;
+  }, []);
+
+  const resendVerificationCode = useCallback(async (email: string) => {
+    await authService.resendVerificationCode(email);
+  }, []);
+
   const signOut = useCallback(async () => {
     await authService.signOut();
     setSession(null);
@@ -170,6 +186,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isRecovering,
       signIn,
       signUp,
+      verifyEmailCode,
+      resendVerificationCode,
       signOut,
       refreshProfile,
       setProfile,
@@ -183,6 +201,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isRecovering,
       signIn,
       signUp,
+      verifyEmailCode,
+      resendVerificationCode,
       signOut,
       refreshProfile,
       setProfile,

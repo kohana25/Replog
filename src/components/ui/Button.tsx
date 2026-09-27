@@ -25,6 +25,8 @@ interface ButtonProps {
   iconPosition?: 'left' | 'right';
   disabled?: boolean;
   loading?: boolean;
+  /** Shown beside the spinner while `loading`, e.g. "Creating your account…". */
+  loadingLabel?: string;
   fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
   /** Defaults to the label; set this when the label alone is ambiguous. */
@@ -41,6 +43,7 @@ export function Button({
   iconPosition = 'left',
   disabled = false,
   loading = false,
+  loadingLabel,
   fullWidth = true,
   style,
   accessibilityLabel,
@@ -73,7 +76,7 @@ export function Button({
       onPress={onPress}
       disabled={isDisabled}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityLabel={(loading ? loadingLabel : null) ?? accessibilityLabel ?? label}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       style={({ pressed }) => [
@@ -92,7 +95,17 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={foreground[variant]} />
+        <View style={styles.content}>
+          <ActivityIndicator color={foreground[variant]} />
+          {loadingLabel ? (
+            <Text
+              numberOfLines={1}
+              style={[styles.label, { color: foreground[variant], fontSize }]}
+            >
+              {loadingLabel}
+            </Text>
+          ) : null}
+        </View>
       ) : (
         <View style={styles.content}>
           {icon && iconPosition === 'left' ? (
