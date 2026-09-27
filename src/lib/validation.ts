@@ -2,24 +2,62 @@
  * Form validation and error-message mapping.
  *
  * Auth errors are deliberately vague about whether an account exists:
- * "Incorrect email or password" rather than "no user with that email".
+ * "Incorrect username or password" rather than "no user with that name".
  */
-
-/**
- * Accounts are Gmail-only: the sign-up verification code is emailed to the
- * address, so it has to be a real Gmail inbox. Google ignores dots and
- * everything after a `+` in the local part, but both are still valid
- * addresses, so they are accepted here.
- */
-const GMAIL_PATTERN = /^[a-z0-9][a-z0-9._%+-]*@gmail\.com$/i;
 
 export const MIN_PASSWORD_LENGTH = 8;
 
-export function validateEmail(value: string): string | null {
-  const email = value.trim();
-  if (!email) return 'Please enter your email address.';
-  if (!GMAIL_PATTERN.test(email)) return 'Please enter a valid Gmail address.';
+/* ------------------------------ usernames ------------------------------ */
+
+export const USERNAME_MIN_LENGTH = 3;
+export const USERNAME_MAX_LENGTH = 20;
+
+/**
+ * Accounts are identified by a username, not an email address.
+ *
+ * The character set is deliberately narrow — a letter first, then letters,
+ * digits and underscores. It has to survive being used as the local part of
+ * the address the account is registered under (see services/auth), it is
+ * shown to other people as `@name`, and a narrow set is what stops two
+ * usernames looking identical while differing in some character nobody can
+ * see.
+ */
+const USERNAME_PATTERN = new RegExp(
+  `^[a-z][a-z0-9_]{${USERNAME_MIN_LENGTH - 1},${USERNAME_MAX_LENGTH - 1}}$`,
+);
+
+/**
+ * Usernames are compared and stored lowercase, so `Alice` and `alice` are one
+ * account rather than two that look the same.
+ */
+export function normalizeUsername(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/** Drop anything that cannot appear in a username, as the user types. */
+export function sanitizeUsername(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, USERNAME_MAX_LENGTH);
+}
+
+export function validateUsername(value: string): string | null {
+  const username = normalizeUsername(value);
+  if (!username) return 'Please choose a username.';
+  if (username.length < USERNAME_MIN_LENGTH) {
+    return `Usernames are at least ${USERNAME_MIN_LENGTH} characters.`;
+  }
+  if (username.length > USERNAME_MAX_LENGTH) {
+    return `Usernames are at most ${USERNAME_MAX_LENGTH} characters.`;
+  }
+  if (!/^[a-z]/.test(username)) return 'Usernames must start with a letter.';
+  if (!USERNAME_PATTERN.test(username)) {
+    return 'Usernames can only use letters, numbers and underscores.';
+  }
   return null;
+}
+
+/** The same rules, for deciding whether the submit button is enabled. */
+export function isUsernameValid(value: string): boolean {
+  return validateUsername(value) === null;
 }
 
 /* ------------------------- password requirements ------------------------ */
@@ -174,28 +212,22 @@ function normalise(error: unknown): { raw: string; code: string; status?: number
   };
 }
 
-/** True for the "this account exists but the email is unconfirmed" error. */
-export function isEmailNotConfirmedError(error: unknown): boolean {
-  const { raw, code } = normalise(error);
-  return code === 'email_not_confirmed' || raw.includes('email not confirmed');
-}
-
-/** True when Supabase could not send the email at all (SMTP/template problem). */
-function isEmailSendFailure(raw: string): boolean {
-  return raw.includes('error sending') || raw.includes('failed to send');
-}
-
 /**
- * True only for a rate limit on *sending* an email, which is a real limit but
- * deserves its own message — telling someone who just asked for a second code
- * that they have made "too many attempts" is misleading.
+ * True when Supabase refuses the account because the project still has email
+ * confirmation switched on.
+ *
+ * Accounts here are registered under an address that cannot receive mail, so
+ * a project that insists on confirming it produces an account nobody can ever
+ * log into. That is a setup mistake rather than something the user did, and
+ * it is worth saying so plainly instead of showing "something went wrong".
  */
-function isEmailSendRateLimit(raw: string, code: string): boolean {
+export function isEmailConfirmationRequiredError(error: unknown): boolean {
+  const { raw, code } = normalise(error);
   return (
-    code === 'over_email_send_rate_limit' ||
-    code === 'email_send_rate_limit' ||
-    raw.includes('email rate limit') ||
-    raw.includes('security purposes')
+    code === 'email_not_confirmed' ||
+    raw.includes('email not confirmed') ||
+    raw.includes('error sending') ||
+    raw.includes('failed to send')
   );
 }
 
@@ -207,24 +239,17 @@ export function authErrorMessage(error: unknown): string {
   const { raw, code, status } = normalise(error);
 
   if (code === 'invalid_credentials' || raw.includes('invalid login credentials')) {
-    return 'Incorrect email or password.';
+    return 'Incorrect username or password.';
   }
-  if (isEmailNotConfirmedError(error)) {
-    return 'Please confirm your email first — open the link we sent you.';
+  if (isEmailConfirmationRequiredError(error)) {
+    return 'This project still has email confirmation switched on. Turn it off in Supabase → Authentication → Sign In / Providers, then try again.';
   }
   if (code === 'user_already_exists' || raw.includes('already registered')) {
-    return 'An account with this email already exists. Please log in instead.';
+    return 'That username is already taken. Please choose another.';
   }
   if (raw.includes('password should be at least') || code === 'weak_password') {
     return 'Please complete all password requirements.';
   }
-  if (isEmailSendRateLimit(raw, code)) {
-    return 'Please wait a moment before asking for another email.';
-  }
-  if (isEmailSendFailure(raw)) {
-    return "We couldn't send the confirmation email. Please try again in a moment.";
-  }
-  // Only a genuine request-rate limit reaches this line.
   if (code === 'over_request_rate_limit' || raw.includes('rate limit') || status === 429) {
     return 'Too many attempts. Please wait a moment and try again.';
   }
@@ -237,9 +262,6 @@ export function authErrorMessage(error: unknown): string {
     raw.includes('failed to fetch')
   ) {
     return 'No connection. Check your network and try again.';
-  }
-  if (raw.includes('token has expired') || raw.includes('invalid token') || code === 'otp_expired') {
-    return 'That reset link has expired. Please request a new one.';
   }
   return 'Something went wrong. Please try again.';
 }

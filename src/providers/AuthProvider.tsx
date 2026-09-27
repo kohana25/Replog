@@ -32,16 +32,11 @@ interface AuthContextValue {
   isBootstrapping: boolean;
   isProfileLoading: boolean;
   isAuthenticated: boolean;
-  /** True after a password-recovery deep link is opened. */
-  isRecovering: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (username: string, password: string) => Promise<void>;
   signUp: (input: authService.SignUpInput) => Promise<authService.SignUpResult>;
-  /** Email Supabase's confirmation link again, for an unconfirmed account. */
-  resendConfirmationEmail: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   setProfile: (profile: ProfileRow) => void;
-  clearRecovery: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -53,7 +48,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfileState] = useState<ProfileRow | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
-  const [isRecovering, setIsRecovering] = useState(false);
 
   const loadedProfileFor = useRef<string | null>(null);
 
@@ -83,7 +77,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const subscription = authService.listenToAuthChanges((next, event) => {
       if (cancelled) return;
       setSession(next);
-      if (event === 'PASSWORD_RECOVERY') setIsRecovering(true);
       if (event === 'SIGNED_OUT') {
         setProfileState(null);
         loadedProfileFor.current = null;
@@ -128,8 +121,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   /* ----------------------------- actions ------------------------------- */
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const next = await authService.signIn(email, password);
+  const signIn = useCallback(async (username: string, password: string) => {
+    const next = await authService.signIn(username, password);
     setSession(next);
   }, []);
 
@@ -137,10 +130,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const result = await authService.signUp(input);
     if (result.session) setSession(result.session);
     return result;
-  }, []);
-
-  const resendConfirmationEmail = useCallback(async (email: string) => {
-    await authService.resendConfirmationEmail(email);
   }, []);
 
   const signOut = useCallback(async () => {
@@ -163,8 +152,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [hydrateFromProfile],
   );
 
-  const clearRecovery = useCallback(() => setIsRecovering(false), []);
-
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
@@ -173,28 +160,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isBootstrapping,
       isProfileLoading,
       isAuthenticated: Boolean(session),
-      isRecovering,
       signIn,
       signUp,
-      resendConfirmationEmail,
       signOut,
       refreshProfile,
       setProfile,
-      clearRecovery,
     }),
     [
       session,
       profile,
       isBootstrapping,
       isProfileLoading,
-      isRecovering,
       signIn,
       signUp,
-      resendConfirmationEmail,
       signOut,
       refreshProfile,
       setProfile,
-      clearRecovery,
     ],
   );
 

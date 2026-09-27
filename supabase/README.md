@@ -8,8 +8,13 @@
 | 2 | `migrations/0002_rls.sql` | Row Level Security on every table |
 | 3 | `migrations/0003_functions.sql` | Stats helpers + `refresh_personal_records` |
 | 4 | `migrations/0004_seed_exercises.sql` | 55 public exercises |
+| 5 | `migrations/0005_username_accounts.sql` | Seeds `profiles.username` at sign-up |
 
-Paste each into the Supabase **SQL Editor** and run it. All four are idempotent.
+Paste each into the Supabase **SQL Editor** and run it. All five are idempotent.
+
+> **Required setting:** turn **Confirm email** OFF under Authentication → Sign In / Providers.
+> Accounts are registered under `<username>@replog.invalid`, an address that can never
+> receive mail, so leaving confirmation on creates accounts nobody can ever log into.
 
 ## Tables
 

@@ -36,8 +36,8 @@ export const supabase = createClient<Database>(
       persistSession: true,
       // Refresh the access token before it expires.
       autoRefreshToken: true,
-      // There is no URL to parse on native; password-recovery deep links are
-      // handled explicitly in app/(auth)/reset-password.tsx.
+      // Nothing arrives by link: accounts are username + password, with no
+      // confirmation or password-recovery flow to parse a URL for.
       detectSessionInUrl: false,
     },
     global: {

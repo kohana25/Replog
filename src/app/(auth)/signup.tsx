@@ -14,11 +14,12 @@ import {
 import { experienceLabel, goalLabel } from '@/lib/format';
 import {
   authErrorMessage,
+  sanitizeUsername,
   stripPasswordSpaces,
   validateConfirmPassword,
-  validateEmail,
   validateFullName,
   validatePassword,
+  validateUsername,
 } from '@/lib/validation';
 import { useAuth } from '@/providers/AuthProvider';
 import { updateProfile } from '@/services/profile';
@@ -39,10 +40,11 @@ const LEVELS: ExperienceLevel[] = ['beginner', 'intermediate', 'advanced'];
 /**
  * Registration against the app's own Supabase Auth instance.
  *
- * The account is created here and Supabase emails its standard confirmation
- * link to the address. The next screen says so; the user opens the link and
- * then logs in with the same email and password. No Google sign-in is
- * involved — the Gmail address is only where the link is delivered.
+ * An account is a username and a password. There is no email address, so
+ * there is no confirmation step: the account works the moment it is created
+ * and the root layout shows Home straight away. It also means a forgotten
+ * password cannot be reset, which the screen says before anyone commits to
+ * one.
  */
 export default function SignUpScreen() {
   const { colors, typography, spacing } = useTheme();
@@ -50,7 +52,7 @@ export default function SignUpScreen() {
   const { signUp } = useAuth();
 
   const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [goal, setGoal] = useState<FitnessGoal | null>(null);
@@ -89,7 +91,7 @@ export default function SignUpScreen() {
 
     const nextErrors = {
       fullName: validateFullName(fullName),
-      email: validateEmail(email),
+      username: validateUsername(username),
       password: validatePassword(password),
       confirm: validateConfirmPassword(password, confirm),
     };
@@ -101,26 +103,18 @@ export default function SignUpScreen() {
 
     setSubmitting(true);
     try {
-      const result = await signUp({ email, password, fullName });
+      const result = await signUp({ username, password, fullName });
 
-      if (result.alreadyRegistered) {
+      if (result.usernameTaken) {
         setErrors((current) => ({
           ...current,
-          email: 'An account with this email already exists. Please log in instead.',
+          username: 'That username is already taken. Please choose another.',
         }));
         return;
       }
 
-      if (result.needsEmailConfirmation) {
-        router.replace({
-          pathname: '/(auth)/confirm-email',
-          params: { email: email.trim().toLowerCase() },
-        });
-        return;
-      }
-
-      // Email confirmation is switched off in the Supabase project, so the
-      // session already exists and the root layout is about to show Home.
+      // There is nothing to confirm, so the session already exists and the
+      // root layout is about to show Home.
       if (result.user && (goal || level)) {
         try {
           await updateProfile(result.user.id, {
@@ -158,17 +152,16 @@ export default function SignUpScreen() {
         />
 
         <Input
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
+          label="Username"
+          value={username}
+          onChangeText={(next) => setUsername(sanitizeUsername(next))}
           onFocus={leavePassword}
-          error={errors.email}
-          helper="Use your Gmail address — that is where your confirmation link is sent."
-          placeholder="you@gmail.com"
+          error={errors.username}
+          helper="This is how you log in, and how others see you. Letters, numbers and underscores."
+          placeholder="yourname"
           autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          textContentType="emailAddress"
+          autoComplete="username-new"
+          textContentType="username"
           autoCorrect={false}
         />
 
@@ -234,6 +227,17 @@ export default function SignUpScreen() {
         </View>
 
         <InlineError message={formError} />
+
+        {/* Said before they commit to a password, not after they forget it. */}
+        <Text
+          style={[
+            typography.caption,
+            { color: colors.textSubtle, textAlign: 'center', lineHeight: 18 },
+          ]}
+        >
+          There is no email on your account, so a forgotten password cannot be reset. Keep it
+          somewhere safe.
+        </Text>
 
         <Button
           label="Create account"

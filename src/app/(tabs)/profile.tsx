@@ -16,7 +16,7 @@ import { MIN_TOUCH_TARGET } from '@/theme/tokens';
 export default function ProfileScreen() {
   const { colors, typography, spacing, radius } = useTheme();
   const router = useRouter();
-  const { profile, user, signOut } = useAuth();
+  const { profile, signOut } = useAuth();
   const { settings } = useSettings();
   const { draft, discardWorkout } = useActiveWorkout();
   const [signingOut, setSigningOut] = useState(false);
@@ -43,7 +43,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const name = profile?.full_name?.trim() || user?.email?.split('@')[0] || 'Your profile';
+  const name = profile?.full_name?.trim() || profile?.username || 'Your profile';
 
   return (
     <Screen bottomInset={draft ? 64 : 0}>
@@ -63,7 +63,7 @@ export default function ProfileScreen() {
               }}
             >
               <Text style={[typography.h2, { color: colors.primary }]}>
-                {initialsFor(profile?.full_name ?? user?.email)}
+                {initialsFor(profile?.full_name ?? profile?.username)}
               </Text>
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -71,7 +71,7 @@ export default function ProfileScreen() {
                 {name}
               </Text>
               <Text numberOfLines={1} style={[typography.caption, { color: colors.textMuted }]}>
-                {profile?.username ? `@${profile.username}` : user?.email}
+                {profile?.username ? `@${profile.username}` : ''}
               </Text>
             </View>
           </View>

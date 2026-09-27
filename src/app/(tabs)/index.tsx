@@ -40,7 +40,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const unit = useUnit();
 
-  const { profile, user } = useAuth();
+  const { profile } = useAuth();
   const { draft, startEmptyWorkout } = useActiveWorkout();
 
   const { data, error, isLoading, isRefreshing, refresh, refetch } = useAsync(
@@ -78,7 +78,7 @@ export default function HomeScreen() {
     }, []),
   );
 
-  const displayName = (profile?.full_name?.trim() || user?.email?.split('@')[0] || '').trim();
+  const displayName = (profile?.full_name?.trim() || profile?.username || '').trim();
 
   const startEmpty = () => {
     startEmptyWorkout();
