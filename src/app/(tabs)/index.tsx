@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { WorkoutHistoryCard } from '@/components/workout/Cards';
+import { WorkoutCalendar } from '@/components/workout/WorkoutCalendar';
 import {
   Badge,
   Button,
@@ -55,10 +56,24 @@ export default function HomeScreen() {
     [],
   );
 
+  /**
+   * The calendar loads its own month, so it is told to reload rather than
+   * being threaded through the dashboard query above. Bumping this on focus
+   * is what makes a day fill in as soon as a workout is finished.
+   */
+  const [calendarToken, setCalendarToken] = useState(0);
+  const firstFocus = useRef(true);
+
   // Numbers change every time a workout is saved, so refresh on return.
   useFocusEffect(
     useCallback(() => {
+      // The first focus is the initial mount, which has already loaded.
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
       void refresh();
+      setCalendarToken((token) => token + 1);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []),
   );
@@ -76,7 +91,14 @@ export default function HomeScreen() {
     <Screen
       bottomInset={draft ? 64 : 0}
       refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.primary} />
+        <RefreshControl
+          refreshing={isRefreshing}
+          onRefresh={() => {
+            setCalendarToken((token) => token + 1);
+            void refresh();
+          }}
+          tintColor={colors.primary}
+        />
       }
     >
       <View style={{ marginBottom: spacing.xl }}>
@@ -184,6 +206,16 @@ export default function HomeScreen() {
               </View>
             </View>
           ) : null}
+
+          {/* ---------------- Workout calendar ---------------- */}
+          <View>
+            <SectionHeader
+              title="Workout calendar"
+              action="History"
+              onActionPress={() => router.push('/workout/history')}
+            />
+            <WorkoutCalendar refreshToken={calendarToken} />
+          </View>
 
           {/* ---------------- Recent session ---------------- */}
           {data && data.recentWorkouts.length > 0 ? (

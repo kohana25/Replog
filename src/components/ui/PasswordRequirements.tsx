@@ -13,8 +13,11 @@ import { useTheme } from '@/theme/ThemeProvider';
  * requirements turn green *and* swap the outline circle for a filled check —
  * status is never carried by colour alone.
  *
- * The sign-up screen mounts this only while the password field has focus, so
- * it fades itself in rather than snapping into the form.
+ * The sign-up screen mounts this only while the password field has focus and
+ * holds a password, so it fades itself in rather than snapping into the form.
+ *
+ * Spaces are not listed: they are stripped from the field as they are typed
+ * or pasted, so there is no rule for the user to satisfy.
  */
 export function PasswordRequirements({
   password,

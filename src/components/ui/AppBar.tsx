@@ -5,10 +5,15 @@ import { useRouter } from 'expo-router';
 
 import { useTheme } from '@/theme/ThemeProvider';
 import { IconButton } from './Button';
+import { useTopInsetApplied } from './Screen';
 
 /**
  * App-wide top bar. We render our own rather than using the native stack
  * header so the colours follow the theme exactly on both platforms.
+ *
+ * Inside a <Screen> the safe-area top inset is already applied around it, so
+ * the bar only adds its own breathing room. Used on its own (a FlatList
+ * screen, say) it clears the status bar itself.
  */
 export function AppBar({
   title,
@@ -25,6 +30,7 @@ export function AppBar({
 }) {
   const { colors, typography, spacing } = useTheme();
   const insets = useSafeAreaInsets();
+  const topInsetApplied = useTopInsetApplied();
   const router = useRouter();
 
   const handleBack = () => {
@@ -38,7 +44,7 @@ export function AppBar({
       style={[
         styles.bar,
         {
-          paddingTop: insets.top + spacing.sm,
+          paddingTop: (topInsetApplied ? 0 : insets.top) + spacing.sm,
           paddingBottom: spacing.sm,
           paddingHorizontal: spacing.sm,
           backgroundColor: colors.background,

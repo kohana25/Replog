@@ -25,7 +25,7 @@ export function validateEmail(value: string): string | null {
 /* ------------------------- password requirements ------------------------ */
 
 export interface PasswordRequirement {
-  id: 'length' | 'number' | 'special' | 'noSpaces';
+  id: 'length' | 'number' | 'special';
   /** Checklist wording, e.g. "Contains a number". */
   label: string;
   /** Sentence wording, e.g. "a number" — used to name what is still missing. */
@@ -37,6 +37,11 @@ export interface PasswordRequirement {
  * The live checklist shown under the password field. The rules the user is
  * shown and the rules the form enforces are this one list, so the indicator
  * and the submit button can never disagree about whether a password passes.
+ *
+ * Spaces are not on the list because they are never allowed to reach it: the
+ * password fields strip whitespace as it is typed or pasted (see
+ * stripPasswordSpaces). isPasswordValid still refuses one, so a value that
+ * somehow arrives with a space in it cannot be submitted.
  */
 export function checkPasswordRequirements(value: string): PasswordRequirement[] {
   return [
@@ -60,18 +65,19 @@ export function checkPasswordRequirements(value: string): PasswordRequirement[] 
       // and friends all qualify.
       met: /[^a-z0-9\s]/i.test(value),
     },
-    // An empty password has no spaces, but showing this one as already met
-    // before the user has typed anything reads as a pass they did not earn.
-    {
-      id: 'noSpaces',
-      label: 'No spaces',
-      shortLabel: 'no spaces',
-      met: value.length > 0 && !/\s/.test(value),
-    },
   ];
 }
 
+/**
+ * Remove every whitespace character. Applied on change, so it covers a typed
+ * space, a pasted value, and an autofilled one alike.
+ */
+export function stripPasswordSpaces(value: string): string {
+  return value.replace(/\s/g, '');
+}
+
 export function isPasswordValid(value: string): boolean {
+  if (/\s/.test(value)) return false;
   return checkPasswordRequirements(value).every((requirement) => requirement.met);
 }
 

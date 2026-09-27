@@ -14,6 +14,7 @@ import {
 import { experienceLabel, goalLabel } from '@/lib/format';
 import {
   authErrorMessage,
+  stripPasswordSpaces,
   validateConfirmPassword,
   validateEmail,
   validateFullName,
@@ -60,11 +61,13 @@ export default function SignUpScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   /**
-   * The requirement checklist belongs to the password field, so it is shown
-   * only while that field is being edited. Focusing any other input blurs the
-   * password, which hides it again.
+   * The requirement checklist belongs to the password field, so it appears
+   * only once that field is being edited *and* has something in it — never on
+   * an untouched form. Focusing any other input blurs the password, which
+   * hides it again.
    */
   const [passwordFocused, setPasswordFocused] = useState(false);
+  const showPasswordRequirements = passwordFocused && password.length > 0;
 
   /** Focusing another text field. Blur alone would do it; this is immediate. */
   const leavePassword = () => setPasswordFocused(false);
@@ -173,7 +176,9 @@ export default function SignUpScreen() {
           <Input
             label="Password"
             value={password}
-            onChangeText={setPassword}
+            // Whitespace never makes it into the value, so a space cannot be
+            // typed, pasted or autofilled into a password.
+            onChangeText={(next) => setPassword(stripPasswordSpaces(next))}
             onFocus={() => setPasswordFocused(true)}
             onBlur={() => setPasswordFocused(false)}
             error={errors.password}
@@ -184,14 +189,14 @@ export default function SignUpScreen() {
             textContentType="newPassword"
           />
 
-          {/* Only while the password field is being edited. */}
-          {passwordFocused ? <PasswordRequirements password={password} /> : null}
+          {/* Only once the user is actually entering a password. */}
+          {showPasswordRequirements ? <PasswordRequirements password={password} /> : null}
         </View>
 
         <Input
           label="Confirm password"
           value={confirm}
-          onChangeText={setConfirm}
+          onChangeText={(next) => setConfirm(stripPasswordSpaces(next))}
           onFocus={leavePassword}
           error={errors.confirm}
           placeholder="Repeat your password"
