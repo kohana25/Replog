@@ -404,3 +404,5 @@ background sync. Supersets can be stored on a routine but there is no grouping U
 | Exercises list is empty | `0004_seed_exercises.sql` has not been run |
 | "You do not have permission" | RLS migration `0002_rls.sql` has not been run |
 | Stale bundle after editing `.env` | `npx expo start -c` |
+| Metro dies with `Fatal process out of memory` while bundling | Usually low RAM during the web bundle. Close other apps, or raise Node's heap: PowerShell `$env:NODE_OPTIONS="--max-old-space-size=4096"; npx expo start`, bash `NODE_OPTIONS=--max-old-space-size=4096 npx expo start` |
+| Windows: slow bundling, file-watcher errors, random crashes | Move the project out of a OneDrive-synced folder (e.g. `C:\dev\replog`). OneDrive syncing `node_modules` fights with Metro's watcher |
