@@ -2,23 +2,37 @@
  * Form validation and error-message mapping.
  *
  * Auth errors are deliberately vague about whether an account exists:
- * "Incorrect email or password" rather than "no user with that email".
+ * "Incorrect username or password" rather than "no such user".
  */
 
-/**
- * Accounts are Gmail-only: the sign-up verification code is emailed to the
- * address, so it has to be a real Gmail inbox. Google ignores dots and
- * everything after a `+` in the local part, but both are still valid
- * addresses, so they are accepted here.
- */
-const GMAIL_PATTERN = /^[a-z0-9][a-z0-9._%+-]*@gmail\.com$/i;
+import {
+  normalizeUsername,
+  USERNAME_MAX_LENGTH,
+  USERNAME_MIN_LENGTH,
+  USERNAME_PATTERN,
+} from './username';
 
 export const MIN_PASSWORD_LENGTH = 8;
 
-export function validateEmail(value: string): string | null {
-  const email = value.trim();
-  if (!email) return 'Please enter your email address.';
-  if (!GMAIL_PATTERN.test(email)) return 'Please enter a valid Gmail address.';
+/**
+ * The sign-up rules for a new username. Login does not use these — someone
+ * with an older account should be told their password is wrong, not that
+ * their own username is invalid.
+ */
+export function validateUsername(value: string): string | null {
+  const username = normalizeUsername(value);
+
+  if (!username) return 'Please enter a username.';
+  if (/\s/.test(username)) return 'Usernames cannot contain spaces.';
+  if (username.length < USERNAME_MIN_LENGTH) {
+    return `Usernames must be at least ${USERNAME_MIN_LENGTH} characters.`;
+  }
+  if (username.length > USERNAME_MAX_LENGTH) {
+    return `Usernames must be ${USERNAME_MAX_LENGTH} characters or fewer.`;
+  }
+  if (!USERNAME_PATTERN.test(username)) {
+    return 'Usernames can use letters, numbers and underscores, starting with a letter or number.';
+  }
   return null;
 }
 
@@ -109,11 +123,6 @@ export function validateConfirmPassword(password: string, confirm: string): stri
   return null;
 }
 
-/** Strip anything that is not a digit, and cap the length, as the user types. */
-export function sanitizeVerificationCode(value: string, length = 6): string {
-  return value.replace(/\D/g, '').slice(0, length);
-}
-
 export function validateFullName(value: string): string | null {
   const name = value.trim();
   if (!name) return 'Please enter your name.';
@@ -174,28 +183,21 @@ function normalise(error: unknown): { raw: string; code: string; status?: number
   };
 }
 
-/** True for the "this account exists but the email is unconfirmed" error. */
-export function isEmailNotConfirmedError(error: unknown): boolean {
-  const { raw, code } = normalise(error);
-  return code === 'email_not_confirmed' || raw.includes('email not confirmed');
-}
-
-/** True when Supabase could not send the email at all (SMTP/template problem). */
-function isEmailSendFailure(raw: string): boolean {
-  return raw.includes('error sending') || raw.includes('failed to send');
-}
-
 /**
- * True only for a rate limit on *sending* an email, which is a real limit but
- * deserves its own message — telling someone who just asked for a second code
- * that they have made "too many attempts" is misleading.
+ * True when the project still has "Confirm email" switched on.
+ *
+ * Username accounts are held against addresses that cannot receive mail, so a
+ * project that insists on confirming them can never activate an account. The
+ * errors that says so — a failed send at sign-up, an unconfirmed account at
+ * login — are one setting, and get one message.
  */
-function isEmailSendRateLimit(raw: string, code: string): boolean {
+export function isEmailConfirmationEnabledError(error: unknown): boolean {
+  const { raw, code } = normalise(error);
   return (
-    code === 'over_email_send_rate_limit' ||
-    code === 'email_send_rate_limit' ||
-    raw.includes('email rate limit') ||
-    raw.includes('security purposes')
+    code === 'email_not_confirmed' ||
+    raw.includes('email not confirmed') ||
+    raw.includes('error sending') ||
+    raw.includes('failed to send')
   );
 }
 
@@ -207,29 +209,20 @@ export function authErrorMessage(error: unknown): string {
   const { raw, code, status } = normalise(error);
 
   if (code === 'invalid_credentials' || raw.includes('invalid login credentials')) {
-    return 'Incorrect email or password.';
+    return 'Incorrect username or password.';
   }
-  if (isEmailNotConfirmedError(error)) {
-    return 'Please confirm your email first — open the link we sent you.';
+  if (isEmailConfirmationEnabledError(error)) {
+    return 'Accounts cannot be activated while “Confirm email” is on in Supabase (see README §2.4).';
   }
   if (code === 'user_already_exists' || raw.includes('already registered')) {
-    return 'An account with this email already exists. Please log in instead.';
+    return 'That username is already taken. Please choose another.';
   }
   if (raw.includes('password should be at least') || code === 'weak_password') {
     return 'Please complete all password requirements.';
   }
-  if (isEmailSendRateLimit(raw, code)) {
-    return 'Please wait a moment before asking for another email.';
-  }
-  if (isEmailSendFailure(raw)) {
-    return "We couldn't send the confirmation email. Please try again in a moment.";
-  }
   // Only a genuine request-rate limit reaches this line.
   if (code === 'over_request_rate_limit' || raw.includes('rate limit') || status === 429) {
     return 'Too many attempts. Please wait a moment and try again.';
-  }
-  if (raw.includes('same as the old password') || code === 'same_password') {
-    return 'Please choose a password you have not used before.';
   }
   if (
     raw.includes('network request failed') ||
@@ -237,9 +230,6 @@ export function authErrorMessage(error: unknown): string {
     raw.includes('failed to fetch')
   ) {
     return 'No connection. Check your network and try again.';
-  }
-  if (raw.includes('token has expired') || raw.includes('invalid token') || code === 'otp_expired') {
-    return 'That reset link has expired. Please request a new one.';
   }
   return 'Something went wrong. Please try again.';
 }

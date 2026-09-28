@@ -24,6 +24,7 @@ import {
   recordLabel,
 } from '@/lib/format';
 import { formatWeight } from '@/lib/units';
+import { accountEmailToUsername } from '@/lib/username';
 import { useActiveWorkout } from '@/providers/ActiveWorkoutProvider';
 import { useAuth } from '@/providers/AuthProvider';
 import { useUnit } from '@/providers/SettingsProvider';
@@ -78,7 +79,12 @@ export default function HomeScreen() {
     }, []),
   );
 
-  const displayName = (profile?.full_name?.trim() || user?.email?.split('@')[0] || '').trim();
+  const displayName = (
+    profile?.full_name?.trim() ||
+    profile?.username ||
+    accountEmailToUsername(user?.email) ||
+    ''
+  ).trim();
 
   const startEmpty = () => {
     startEmptyWorkout();

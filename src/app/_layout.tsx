@@ -37,7 +37,7 @@ export default function RootLayout() {
 function RootNavigator() {
   const { colors, isDark } = useTheme();
   const { isReady: settingsReady } = useSettings();
-  const { isBootstrapping, isAuthenticated, isRecovering } = useAuth();
+  const { isBootstrapping, isAuthenticated } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -60,10 +60,10 @@ function RootNavigator() {
 
     if (!isAuthenticated && !inAuthGroup) {
       router.replace('/(auth)/welcome');
-    } else if (isAuthenticated && inAuthGroup && !isRecovering) {
+    } else if (isAuthenticated && inAuthGroup) {
       router.replace('/(tabs)');
     }
-  }, [booting, isAuthenticated, isRecovering, segments, router]);
+  }, [booting, isAuthenticated, segments, router]);
 
   if (!isSupabaseConfigured) return <SetupNotice />;
 

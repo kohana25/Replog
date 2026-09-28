@@ -12,13 +12,14 @@ import {
   Screen,
 } from '@/components/ui';
 import { experienceLabel, goalLabel } from '@/lib/format';
+import { stripUsernameSpaces, USERNAME_MAX_LENGTH } from '@/lib/username';
 import {
   authErrorMessage,
   stripPasswordSpaces,
   validateConfirmPassword,
-  validateEmail,
   validateFullName,
   validatePassword,
+  validateUsername,
 } from '@/lib/validation';
 import { useAuth } from '@/providers/AuthProvider';
 import { updateProfile } from '@/services/profile';
@@ -39,10 +40,9 @@ const LEVELS: ExperienceLevel[] = ['beginner', 'intermediate', 'advanced'];
 /**
  * Registration against the app's own Supabase Auth instance.
  *
- * The account is created here and Supabase emails its standard confirmation
- * link to the address. The next screen says so; the user opens the link and
- * then logs in with the same email and password. No Google sign-in is
- * involved — the Gmail address is only where the link is delivered.
+ * The user picks a username and a password. Supabase hashes the password and
+ * issues the session immediately — there is nothing to verify, no email, and
+ * no Google sign-in — so a new account goes straight to Home.
  */
 export default function SignUpScreen() {
   const { colors, typography, spacing } = useTheme();
@@ -50,7 +50,7 @@ export default function SignUpScreen() {
   const { signUp } = useAuth();
 
   const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [goal, setGoal] = useState<FitnessGoal | null>(null);
@@ -89,7 +89,7 @@ export default function SignUpScreen() {
 
     const nextErrors = {
       fullName: validateFullName(fullName),
-      email: validateEmail(email),
+      username: validateUsername(username),
       password: validatePassword(password),
       confirm: validateConfirmPassword(password, confirm),
     };
@@ -101,26 +101,19 @@ export default function SignUpScreen() {
 
     setSubmitting(true);
     try {
-      const result = await signUp({ email, password, fullName });
+      const result = await signUp({ username, password, fullName });
 
-      if (result.alreadyRegistered) {
+      if (result.usernameTaken) {
         setErrors((current) => ({
           ...current,
-          email: 'An account with this email already exists. Please log in instead.',
+          username: 'That username is already taken. Please choose another.',
         }));
         return;
       }
 
-      if (result.needsEmailConfirmation) {
-        router.replace({
-          pathname: '/(auth)/confirm-email',
-          params: { email: email.trim().toLowerCase() },
-        });
-        return;
-      }
-
-      // Email confirmation is switched off in the Supabase project, so the
-      // session already exists and the root layout is about to show Home.
+      // The session exists from here, and the root layout is about to show
+      // Home, so the onboarding answers can be written to the profile row the
+      // sign-up trigger just created.
       if (result.user && (goal || level)) {
         try {
           await updateProfile(result.user.id, {
@@ -158,18 +151,20 @@ export default function SignUpScreen() {
         />
 
         <Input
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
+          label="Username"
+          value={username}
+          // A username cannot contain a space, so one is never let in rather
+          // than being rejected after the fact.
+          onChangeText={(next) => setUsername(stripUsernameSpaces(next))}
           onFocus={leavePassword}
-          error={errors.email}
-          helper="Use your Gmail address — that is where your confirmation link is sent."
-          placeholder="you@gmail.com"
+          error={errors.username}
+          helper="This is what you will log in with. Letters, numbers and underscores."
+          placeholder="yourname"
           autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          textContentType="emailAddress"
+          autoComplete="username-new"
+          textContentType="username"
           autoCorrect={false}
+          maxLength={USERNAME_MAX_LENGTH}
         />
 
         <View style={{ gap: spacing.md }}>

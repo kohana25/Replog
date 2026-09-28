@@ -4,6 +4,7 @@ import { Text, View } from 'react-native';
 
 import { AppBar, Button, Card, InlineError, OptionGroup, Screen, SectionHeader } from '@/components/ui';
 import { formatClock } from '@/lib/format';
+import { accountEmailToUsername } from '@/lib/username';
 import { dataErrorMessage } from '@/lib/validation';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSettings } from '@/providers/SettingsProvider';
@@ -108,7 +109,12 @@ export default function SettingsScreen() {
             <SectionHeader title="Account" />
             <Card style={{ gap: spacing.sm }}>
               <Text style={[typography.caption, { color: colors.textMuted }]}>Signed in as</Text>
-              <Text style={[typography.bodyStrong, { color: colors.text }]}>{user?.email}</Text>
+              <Text style={[typography.bodyStrong, { color: colors.text }]}>
+                {(() => {
+                  const name = profile?.username ?? accountEmailToUsername(user?.email);
+                  return name ? `@${name}` : '—';
+                })()}
+              </Text>
               <Text style={[typography.caption, { color: colors.textSubtle }]}>
                 Member since {profile ? new Date(profile.created_at).toLocaleDateString() : '—'}
               </Text>

@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { AppBar, Button, InlineError, Input, OptionGroup, Screen } from '@/components/ui';
 import { experienceLabel, goalLabel } from '@/lib/format';
 import { parseNumericInput, parseWeightInput, weightInputValue } from '@/lib/units';
+import { accountEmailToUsername } from '@/lib/username';
 import { dataErrorMessage, validateFullName } from '@/lib/validation';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSettings } from '@/providers/SettingsProvider';
@@ -28,7 +29,14 @@ export default function EditProfileScreen() {
   const { settings } = useSettings();
 
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
-  const [username, setUsername] = useState(profile?.username ?? '');
+
+  /**
+   * Shown, never edited. The username is what the account logs in with, and
+   * that identifier lives in Supabase Auth — changing this row would rename
+   * the profile without renaming the login, which is worse than not offering
+   * it at all.
+   */
+  const accountUsername = profile?.username ?? accountEmailToUsername(user?.email);
   const [goal, setGoal] = useState<FitnessGoal | null>(profile?.fitness_goal ?? null);
   const [level, setLevel] = useState<ExperienceLevel | null>(profile?.experience_level ?? null);
   const [height, setHeight] = useState(
@@ -50,7 +58,6 @@ export default function EditProfileScreen() {
     try {
       const updated = await updateProfile(user.id, {
         full_name: fullName.trim(),
-        username: username.trim() || null,
         fitness_goal: goal,
         experience_level: level,
         height_cm: parseNumericInput(height),
@@ -59,8 +66,7 @@ export default function EditProfileScreen() {
       setProfile(updated);
       router.back();
     } catch (caught) {
-      const message = dataErrorMessage(caught, 'Could not save your profile.');
-      setFormError(message === 'That already exists.' ? 'That username is taken.' : message);
+      setFormError(dataErrorMessage(caught, 'Could not save your profile.'));
     } finally {
       setSaving(false);
     }
@@ -74,12 +80,11 @@ export default function EditProfileScreen() {
           <Input label="Full name" value={fullName} onChangeText={setFullName} error={nameError} />
 
           <Input
-            label="Username (optional)"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder="yourname"
+            label="Username"
+            value={accountUsername ? `@${accountUsername}` : '—'}
+            onChangeText={() => {}}
+            editable={false}
+            helper="You log in with this. It cannot be changed."
           />
 
           <OptionGroup

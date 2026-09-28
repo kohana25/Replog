@@ -6,6 +6,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Screen, ScreenHeading, SectionHeader } from '@/components/ui';
 import { experienceLabel, goalLabel, initialsFor } from '@/lib/format';
 import { cmToDisplay, formatWeight } from '@/lib/units';
+import { accountEmailToUsername } from '@/lib/username';
 import { useActiveWorkout } from '@/providers/ActiveWorkoutProvider';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSettings } from '@/providers/SettingsProvider';
@@ -47,7 +48,10 @@ export default function ProfileScreen() {
     );
   };
 
-  const name = profile?.full_name?.trim() || user?.email?.split('@')[0] || 'Your profile';
+  // The username is the account's identifier, so it is the fallback whenever
+  // no display name has been set.
+  const accountUsername = profile?.username ?? accountEmailToUsername(user?.email);
+  const name = profile?.full_name?.trim() || accountUsername || 'Your profile';
 
   return (
     <Screen bottomInset={draft ? 64 : 0}>
@@ -67,7 +71,7 @@ export default function ProfileScreen() {
               }}
             >
               <Text style={[typography.h2, { color: colors.primary }]}>
-                {initialsFor(profile?.full_name ?? user?.email)}
+                {initialsFor(profile?.full_name ?? accountUsername)}
               </Text>
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -75,7 +79,7 @@ export default function ProfileScreen() {
                 {name}
               </Text>
               <Text numberOfLines={1} style={[typography.caption, { color: colors.textMuted }]}>
-                {profile?.username ? `@${profile.username}` : user?.email}
+                {accountUsername ? `@${accountUsername}` : 'No username'}
               </Text>
             </View>
           </View>
