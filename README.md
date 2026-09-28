@@ -76,6 +76,12 @@ Leave *Confirm email* on and sign-up cannot finish: Supabase tries to send a con
 an address that cannot exist, and no session is issued. The app says so rather than failing
 silently, but the fix is this checkbox.
 
+Run `migrations/0005_username_auth.sql` when you run the others (§2.2): it teaches the sign-up
+trigger to store the username and adds the case-insensitive unique index. Sign-up also writes
+the username from the app straight after registering, so a database that has not had 0005
+applied yet still ends up with the name in `profiles.username` — the migration is what makes
+the database enforce it rather than merely hold it.
+
 No email template, Site URL or SMTP setting is needed. Nothing to configure on a free plan.
 
 ## 3. Run the app

@@ -12,7 +12,7 @@ import {
   Screen,
 } from '@/components/ui';
 import { experienceLabel, goalLabel } from '@/lib/format';
-import { stripUsernameSpaces, USERNAME_MAX_LENGTH } from '@/lib/username';
+import { normalizeUsername, stripUsernameSpaces, USERNAME_MAX_LENGTH } from '@/lib/username';
 import {
   authErrorMessage,
   stripPasswordSpaces,
@@ -22,7 +22,7 @@ import {
   validateUsername,
 } from '@/lib/validation';
 import { useAuth } from '@/providers/AuthProvider';
-import { updateProfile } from '@/services/profile';
+import { completeSignUpProfile } from '@/services/profile';
 import { useTheme } from '@/theme/ThemeProvider';
 import type { ExperienceLevel, FitnessGoal } from '@/types/database';
 
@@ -47,7 +47,7 @@ const LEVELS: ExperienceLevel[] = ['beginner', 'intermediate', 'advanced'];
 export default function SignUpScreen() {
   const { colors, typography, spacing } = useTheme();
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { signUp, setProfile } = useAuth();
 
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
@@ -112,17 +112,17 @@ export default function SignUpScreen() {
       }
 
       // The session exists from here, and the root layout is about to show
-      // Home, so the onboarding answers can be written to the profile row the
-      // sign-up trigger just created.
-      if (result.user && (goal || level)) {
-        try {
-          await updateProfile(result.user.id, {
-            fitness_goal: goal,
-            experience_level: level,
-          });
-        } catch {
-          // Not worth blocking sign-up; editable later from Profile.
-        }
+      // Home. Write the username onto the profile row the sign-up trigger
+      // just created — belt and braces with the trigger, so the name is
+      // stored even on a database where 0005 has not been applied yet — along
+      // with the optional onboarding answers.
+      if (result.user) {
+        const saved = await completeSignUpProfile(result.user.id, {
+          username: normalizeUsername(username),
+          fitness_goal: goal,
+          experience_level: level,
+        });
+        if (saved) setProfile(saved);
       }
     } catch (error) {
       setFormError(authErrorMessage(error));
