@@ -12,9 +12,9 @@ import {
   Screen,
 } from '@/components/ui';
 import { experienceLabel, goalLabel } from '@/lib/format';
+import { normalizeUsername, stripUsernameSpaces, USERNAME_MAX_LENGTH } from '@/lib/username';
 import {
   authErrorMessage,
-  sanitizeUsername,
   stripPasswordSpaces,
   validateConfirmPassword,
   validateFullName,
@@ -22,7 +22,7 @@ import {
   validateUsername,
 } from '@/lib/validation';
 import { useAuth } from '@/providers/AuthProvider';
-import { updateProfile } from '@/services/profile';
+import { completeSignUpProfile } from '@/services/profile';
 import { useTheme } from '@/theme/ThemeProvider';
 import type { ExperienceLevel, FitnessGoal } from '@/types/database';
 
@@ -40,16 +40,14 @@ const LEVELS: ExperienceLevel[] = ['beginner', 'intermediate', 'advanced'];
 /**
  * Registration against the app's own Supabase Auth instance.
  *
- * An account is a username and a password. There is no email address, so
- * there is no confirmation step: the account works the moment it is created
- * and the root layout shows Home straight away. It also means a forgotten
- * password cannot be reset, which the screen says before anyone commits to
- * one.
+ * The user picks a username and a password. Supabase hashes the password and
+ * issues the session immediately — there is nothing to verify, no email, and
+ * no Google sign-in — so a new account goes straight to Home.
  */
 export default function SignUpScreen() {
   const { colors, typography, spacing } = useTheme();
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { signUp, setProfile } = useAuth();
 
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
@@ -113,17 +111,18 @@ export default function SignUpScreen() {
         return;
       }
 
-      // There is nothing to confirm, so the session already exists and the
-      // root layout is about to show Home.
-      if (result.user && (goal || level)) {
-        try {
-          await updateProfile(result.user.id, {
-            fitness_goal: goal,
-            experience_level: level,
-          });
-        } catch {
-          // Not worth blocking sign-up; editable later from Profile.
-        }
+      // The session exists from here, and the root layout is about to show
+      // Home. Write the username onto the profile row the sign-up trigger
+      // just created — belt and braces with the trigger, so the name is
+      // stored even on a database where 0005 has not been applied yet — along
+      // with the optional onboarding answers.
+      if (result.user) {
+        const saved = await completeSignUpProfile(result.user.id, {
+          username: normalizeUsername(username),
+          fitness_goal: goal,
+          experience_level: level,
+        });
+        if (saved) setProfile(saved);
       }
     } catch (error) {
       setFormError(authErrorMessage(error));
@@ -154,15 +153,18 @@ export default function SignUpScreen() {
         <Input
           label="Username"
           value={username}
-          onChangeText={(next) => setUsername(sanitizeUsername(next))}
+          // A username cannot contain a space, so one is never let in rather
+          // than being rejected after the fact.
+          onChangeText={(next) => setUsername(stripUsernameSpaces(next))}
           onFocus={leavePassword}
           error={errors.username}
-          helper="This is how you log in, and how others see you. Letters, numbers and underscores."
+          helper="This is what you will log in with. Letters, numbers and underscores."
           placeholder="yourname"
           autoCapitalize="none"
           autoComplete="username-new"
           textContentType="username"
           autoCorrect={false}
+          maxLength={USERNAME_MAX_LENGTH}
         />
 
         <View style={{ gap: spacing.md }}>
@@ -227,17 +229,6 @@ export default function SignUpScreen() {
         </View>
 
         <InlineError message={formError} />
-
-        {/* Said before they commit to a password, not after they forget it. */}
-        <Text
-          style={[
-            typography.caption,
-            { color: colors.textSubtle, textAlign: 'center', lineHeight: 18 },
-          ]}
-        >
-          There is no email on your account, so a forgotten password cannot be reset. Keep it
-          somewhere safe.
-        </Text>
 
         <Button
           label="Create account"

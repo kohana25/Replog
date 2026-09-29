@@ -7,6 +7,7 @@ import { Button, Card, Screen, ScreenHeading, SectionHeader } from '@/components
 import { confirmAction, notify } from '@/lib/alert';
 import { experienceLabel, goalLabel, initialsFor } from '@/lib/format';
 import { cmToDisplay, formatWeight } from '@/lib/units';
+import { accountEmailToUsername } from '@/lib/username';
 import { useActiveWorkout } from '@/providers/ActiveWorkoutProvider';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSettings } from '@/providers/SettingsProvider';
@@ -16,7 +17,7 @@ import { MIN_TOUCH_TARGET } from '@/theme/tokens';
 export default function ProfileScreen() {
   const { colors, typography, spacing, radius } = useTheme();
   const router = useRouter();
-  const { profile, signOut } = useAuth();
+  const { profile, user, signOut } = useAuth();
   const { settings } = useSettings();
   const { draft, discardWorkout } = useActiveWorkout();
   const [signingOut, setSigningOut] = useState(false);
@@ -43,7 +44,11 @@ export default function ProfileScreen() {
     }
   };
 
-  const name = profile?.full_name?.trim() || profile?.username || 'Your profile';
+  // The username is the account's identifier, so it is the fallback whenever
+  // no display name has been set. Reading it back off the account address
+  // keeps the screen right even if the profile row never stored it.
+  const accountUsername = profile?.username ?? accountEmailToUsername(user?.email);
+  const name = profile?.full_name?.trim() || accountUsername || 'Your profile';
 
   return (
     <Screen bottomInset={draft ? 64 : 0}>
@@ -63,7 +68,7 @@ export default function ProfileScreen() {
               }}
             >
               <Text style={[typography.h2, { color: colors.primary }]}>
-                {initialsFor(profile?.full_name ?? profile?.username)}
+                {initialsFor(profile?.full_name ?? accountUsername)}
               </Text>
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -71,7 +76,7 @@ export default function ProfileScreen() {
                 {name}
               </Text>
               <Text numberOfLines={1} style={[typography.caption, { color: colors.textMuted }]}>
-                {profile?.username ? `@${profile.username}` : ''}
+                {accountUsername ? `@${accountUsername}` : 'No username'}
               </Text>
             </View>
           </View>

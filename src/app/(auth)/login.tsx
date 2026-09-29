@@ -1,39 +1,51 @@
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { AppBar, Button, InlineError, Input, Screen } from '@/components/ui';
-import { authErrorMessage, sanitizeUsername, validateUsername } from '@/lib/validation';
+import { stripUsernameSpaces } from '@/lib/username';
+import { authErrorMessage } from '@/lib/validation';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/theme/ThemeProvider';
 
 /**
- * Password login against the app's own Supabase Auth instance.
+ * Username and password, against this project's own Supabase Auth instance.
  *
- * Accounts are a username and a password — there is no email address, no
- * confirmation step and nothing to recover a forgotten password with, so this
- * screen is the only way in.
+ * No email is involved anywhere: no Google sign-in, nothing to verify, and no
+ * emailed password recovery. A correct username and password land on Home.
  */
 export default function LoginScreen() {
   const { colors, typography, spacing } = useTheme();
   const router = useRouter();
   const { signIn } = useAuth();
 
-  const [username, setUsername] = useState('');
+  // Sign-up hands the username over, so logging in straight afterwards is one
+  // field rather than two.
+  const params = useLocalSearchParams<{ username?: string }>();
+  const prefilledUsername = stripUsernameSpaces(params.username ?? '').toLowerCase();
+
+  const [username, setUsername] = useState(prefilledUsername);
   const [password, setPassword] = useState('');
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (prefilledUsername) setUsername(prefilledUsername);
+  }, [prefilledUsername]);
+
   const handleSubmit = async () => {
-    // The button is disabled while the request is in flight; this also stops
-    // the keyboard's "go" key landing on top of a tap.
+    // The button shows a spinner while the request is in flight; this also
+    // stops the keyboard's "go" key landing on top of a tap.
     if (submitting) return;
 
-    const nextUsernameError = validateUsername(username);
-    // Deliberately only "is it present" here: telling the user their stored
-    // password is too short would leak information about the account.
+    /*
+     * Presence only, on both fields. Telling someone their own username is
+     * too short, or their stored password too weak, would both leak something
+     * about the account and stop an older account signing in at all.
+     */
+    const nextUsernameError = username.trim() ? null : 'Please enter your username.';
     const nextPasswordError = password ? null : 'Please enter your password.';
 
     setUsernameError(nextUsernameError);
@@ -63,10 +75,7 @@ export default function LoginScreen() {
         <Input
           label="Username"
           value={username}
-          onChangeText={(next) => {
-            setUsername(sanitizeUsername(next));
-            setUsernameError(null);
-          }}
+          onChangeText={(next) => setUsername(stripUsernameSpaces(next))}
           error={usernameError}
           placeholder="yourname"
           autoCapitalize="none"
@@ -98,16 +107,6 @@ export default function LoginScreen() {
           loadingLabel="Logging you in…"
           size="lg"
         />
-
-        {/* No "forgot password": there is no address to send a reset to. */}
-        <Text
-          style={[
-            typography.caption,
-            { color: colors.textSubtle, textAlign: 'center', lineHeight: 18 },
-          ]}
-        >
-          Accounts have no email attached, so a forgotten password cannot be reset.
-        </Text>
 
         <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
           <Text style={[typography.body, { color: colors.textMuted }]}>

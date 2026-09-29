@@ -69,3 +69,33 @@ export async function updateProfile(userId: UUID, patch: ProfileUpdate): Promise
   if (error) throw error;
   return data as ProfileRow;
 }
+
+/**
+ * Write the sign-up details onto the profile row, right after registering.
+ *
+ * The `handle_new_user` trigger creates that row and — once
+ * 0005_username_auth.sql has been applied — fills the username in from the
+ * sign-up metadata. Doing it again from here costs one request and makes the
+ * app correct on a database where that migration has *not* been run yet:
+ * the username is stored either way. `getProfile` first, because it creates
+ * the row if the trigger has not landed yet, which an update alone would
+ * silently miss.
+ *
+ * Nothing here is worth failing a sign-up over, so the caller is handed a
+ * profile or null rather than an error.
+ */
+export async function completeSignUpProfile(
+  userId: UUID,
+  patch: ProfileUpdate,
+): Promise<ProfileRow | null> {
+  try {
+    await getProfile(userId);
+    return await updateProfile(userId, patch);
+  } catch {
+    // A username collision here means another profile row already holds the
+    // name. The account itself is fine — Supabase Auth guaranteed the login
+    // name is unique — and the screens fall back to reading it from the
+    // account, so this is not worth interrupting anyone for.
+    return null;
+  }
+}

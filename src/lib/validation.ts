@@ -5,59 +5,43 @@
  * "Incorrect username or password" rather than "no user with that name".
  */
 
+import {
+  normalizeUsername,
+  USERNAME_MAX_LENGTH,
+  USERNAME_MIN_LENGTH,
+  USERNAME_PATTERN,
+} from './username';
+
 export const MIN_PASSWORD_LENGTH = 8;
 
 /* ------------------------------ usernames ------------------------------ */
 
-export const USERNAME_MIN_LENGTH = 3;
-export const USERNAME_MAX_LENGTH = 20;
-
 /**
- * Accounts are identified by a username, not an email address.
+ * The sign-up rules for a new username. Login does not use these — someone
+ * with an older account should be told their password is wrong, not that
+ * their own username is invalid.
  *
- * The character set is deliberately narrow — a letter first, then letters,
- * digits and underscores. It has to survive being used as the local part of
- * the address the account is registered under (see services/auth), it is
- * shown to other people as `@name`, and a narrow set is what stops two
- * usernames looking identical while differing in some character nobody can
- * see.
+ * The character set is deliberately narrow: it has to survive being used as
+ * the local part of the address the account is registered under (see
+ * lib/username), it is shown to other people as `@name`, and a narrow set is
+ * what stops two usernames looking identical while differing in some
+ * character nobody can see.
  */
-const USERNAME_PATTERN = new RegExp(
-  `^[a-z][a-z0-9_]{${USERNAME_MIN_LENGTH - 1},${USERNAME_MAX_LENGTH - 1}}$`,
-);
-
-/**
- * Usernames are compared and stored lowercase, so `Alice` and `alice` are one
- * account rather than two that look the same.
- */
-export function normalizeUsername(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-/** Drop anything that cannot appear in a username, as the user types. */
-export function sanitizeUsername(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, USERNAME_MAX_LENGTH);
-}
-
 export function validateUsername(value: string): string | null {
   const username = normalizeUsername(value);
-  if (!username) return 'Please choose a username.';
+
+  if (!username) return 'Please enter a username.';
+  if (/\s/.test(username)) return 'Usernames cannot contain spaces.';
   if (username.length < USERNAME_MIN_LENGTH) {
-    return `Usernames are at least ${USERNAME_MIN_LENGTH} characters.`;
+    return `Usernames must be at least ${USERNAME_MIN_LENGTH} characters.`;
   }
   if (username.length > USERNAME_MAX_LENGTH) {
-    return `Usernames are at most ${USERNAME_MAX_LENGTH} characters.`;
+    return `Usernames must be ${USERNAME_MAX_LENGTH} characters or fewer.`;
   }
-  if (!/^[a-z]/.test(username)) return 'Usernames must start with a letter.';
   if (!USERNAME_PATTERN.test(username)) {
-    return 'Usernames can only use letters, numbers and underscores.';
+    return 'Usernames can use letters, numbers and underscores, starting with a letter or number.';
   }
   return null;
-}
-
-/** The same rules, for deciding whether the submit button is enabled. */
-export function isUsernameValid(value: string): boolean {
-  return validateUsername(value) === null;
 }
 
 /* ------------------------- password requirements ------------------------ */
@@ -145,11 +129,6 @@ export function validateConfirmPassword(password: string, confirm: string): stri
   if (!confirm) return 'Please confirm your password.';
   if (password !== confirm) return 'Passwords do not match.';
   return null;
-}
-
-/** Strip anything that is not a digit, and cap the length, as the user types. */
-export function sanitizeVerificationCode(value: string, length = 6): string {
-  return value.replace(/\D/g, '').slice(0, length);
 }
 
 export function validateFullName(value: string): string | null {
@@ -252,9 +231,6 @@ export function authErrorMessage(error: unknown): string {
   }
   if (code === 'over_request_rate_limit' || raw.includes('rate limit') || status === 429) {
     return 'Too many attempts. Please wait a moment and try again.';
-  }
-  if (raw.includes('same as the old password') || code === 'same_password') {
-    return 'Please choose a password you have not used before.';
   }
   if (
     raw.includes('network request failed') ||
