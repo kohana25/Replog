@@ -17,7 +17,7 @@ Paste each into the Supabase **SQL Editor** and run it. 0002-0007 are idempotent
 once.
 
 > **Required setting:** turn **Confirm email** OFF under Authentication → Sign In / Providers.
-> Accounts are registered under `<username>@users.replog.invalid`, an address that can never
+> Accounts are registered under `<username>@replog.internal`, an address that can never
 > receive mail, so leaving confirmation on creates accounts nobody can ever log into.
 
 ## Tables

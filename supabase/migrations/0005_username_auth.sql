@@ -9,7 +9,7 @@
 --   tables, and no password is ever stored here in any form.
 --
 --   The username the user types is mapped by the client to a fixed address on
---   a domain reserved by RFC 2606 to never exist (`<name>@users.replog.invalid`),
+--   a domain never delegated in the public DNS (`<name>@replog.internal`),
 --   which is what auth.users.email holds. That address is never mailed: it is
 --   only how Supabase tells one account from another, and it makes usernames
 --   unique for free, because auth.users.email already is.

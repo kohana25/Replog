@@ -67,9 +67,10 @@ confirmation step, no reset link, no inbox.
 **Authentication → Sign In / Providers → Email** — uncheck *Confirm email*.
 
 This is not optional. Supabase Auth has no username credential, so the app registers each
-account under a synthetic address, `<username>@users.replog.invalid`. `.invalid` is reserved by
-RFC 2606 and can never be a real domain, which is the point: the address is unroutable by
-construction, so no mail can ever reach a stranger's inbox by mistake. It also means nothing
+account under a synthetic address, `<username>@replog.internal`. `.internal` is reserved by
+ICANN for private use and is never delegated in the public DNS, which is the point: the
+address is unroutable by construction, so no mail can ever reach a stranger's inbox by
+mistake. It also means nothing
 can ever confirm it. Leave *Confirm email* checked and Supabase will withhold the session
 until an address that cannot receive mail is confirmed, producing accounts nobody can log
 into. The app detects that case and says so on screen rather than showing a generic error.
@@ -175,7 +176,7 @@ username + password  →  account created (password hashed by Supabase, never st
 ```
 
 Supabase Auth authenticates an email and a password, so `src/services/auth.ts` maps the
-username onto a synthetic address — `<username>@users.replog.invalid` — and hands the username
+username onto a synthetic address — `<username>@replog.internal` — and hands the username
 through in the sign-up metadata. The `handle_new_user()` trigger
 (`supabase/migrations/0005_username_auth.sql`) reads that metadata and seeds
 `profiles.username`, so the username is written once, server-side, rather than by a client

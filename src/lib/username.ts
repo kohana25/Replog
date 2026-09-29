@@ -3,9 +3,9 @@
  *
  * The app signs people in with a username and a password. Supabase Auth
  * identifies an account by an email address, so each username is mapped to a
- * fixed address on a domain that is reserved by RFC 2606 to never exist:
+ * fixed address on a domain that is never delegated in the public DNS:
  *
- *     alex  ->  alex@users.replog.invalid
+ *     alex  ->  alex@replog.internal
  *
  * That keeps everything Supabase Auth already does — bcrypt password hashing,
  * refresh tokens, `auth.uid()` behind every Row Level Security policy — while
@@ -21,8 +21,16 @@
 export const USERNAME_MIN_LENGTH = 3;
 export const USERNAME_MAX_LENGTH = 20;
 
-/** Reserved by RFC 2606: guaranteed never to resolve or accept mail. */
-const ACCOUNT_EMAIL_DOMAIN = 'users.replog.invalid';
+/**
+ * Reserved by ICANN for private internal use and never delegated in the public
+ * DNS, so it cannot resolve or accept mail on the internet.
+ *
+ * Changing this string re-points every account: the mapping is deterministic
+ * and there is no lookup, so a username resolves to a different Supabase
+ * account the moment the domain differs. It must keep matching the addresses
+ * already stored in auth.users.
+ */
+const ACCOUNT_EMAIL_DOMAIN = 'replog.internal';
 
 /** Letters, digits and underscores, starting with a letter or digit. */
 export const USERNAME_PATTERN = /^[a-z0-9][a-z0-9_]*$/;
