@@ -1,9 +1,9 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, Screen } from '@/components/ui';
+import { BrandMark, Button, Screen } from '@/components/ui';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useResponsive } from '@/theme/useResponsive';
 
@@ -19,18 +19,12 @@ export default function WelcomeScreen() {
           breathing room the splash-style layout wants on top of it. */}
       <View style={[styles.container, { paddingTop: spacing['3xl'] }]}>
         <View style={{ alignItems: 'center', gap: spacing.lg }}>
-          <Image
-            source={require('@/assets/images/splash-icon.png')}
-            style={{ width: isWide ? 120 : 96, height: isWide ? 120 : 96 }}
-            resizeMode="contain"
-            accessibilityRole="image"
-            accessibilityLabel="RepLog logo"
-          />
+          <BrandMark size={isWide ? 'lg' : 'md'} showWordmark={false} />
           <Text
             accessibilityRole="header"
             style={[typography.display, { color: colors.text, textAlign: 'center' }]}
           >
-            RepLog
+            Movara
           </Text>
           <Text
             style={[

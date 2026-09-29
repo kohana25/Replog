@@ -157,7 +157,7 @@ export function SectionHeader({
           hitSlop={8}
           style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
         >
-          <Text style={[typography.caption, { color: colors.primary, fontWeight: '600' }]}>
+          <Text style={[typography.caption, { color: colors.primaryText, fontWeight: '600' }]}>
             {action}
           </Text>
         </Pressable>

@@ -243,7 +243,7 @@ export default function SignUpScreen() {
             Already have an account?
           </Text>
           <Pressable onPress={() => router.replace('/(auth)/login')} accessibilityRole="button">
-            <Text style={[typography.body, { color: colors.primary, fontWeight: '600' }]}>
+            <Text style={[typography.body, { color: colors.primaryText, fontWeight: '600' }]}>
               Log in
             </Text>
           </Pressable>

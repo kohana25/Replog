@@ -116,7 +116,7 @@ export default function WorkoutDetailScreen() {
                 <Text
                   onPress={() => router.push(`/exercises/${entry.exercise_id}`)}
                   accessibilityRole="link"
-                  style={[typography.h3, { color: colors.primary }]}
+                  style={[typography.h3, { color: colors.primaryText }]}
                 >
                   {entry.exercise?.name ?? 'Exercise'}
                 </Text>

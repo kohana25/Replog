@@ -114,7 +114,7 @@ export default function SuggestedRoutineScreen() {
                   <Text
                     onPress={() => router.push(`/exercises/${item.exercise_id}`)}
                     accessibilityRole="link"
-                    style={[typography.h3, { color: colors.primary, flex: 1 }]}
+                    style={[typography.h3, { color: colors.primaryText, flex: 1 }]}
                   >
                     {item.exercise.name}
                   </Text>

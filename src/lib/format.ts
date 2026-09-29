@@ -65,6 +65,35 @@ export function endOfMonth(value: Date): Date {
 }
 
 /** "March 2026" in the device's locale. */
+/**
+ * Midnight on the Monday of this date's week, in local time.
+ *
+ * Monday-first matches how the streak and "this week" figures are already
+ * counted in 0003_functions.sql (`extract(isodow ...)`), so the week strip
+ * and the server's own numbers never disagree about which week a day is in.
+ */
+export function startOfWeek(value: Date): Date {
+  const d = new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  const isoDay = (d.getDay() + 6) % 7; // Monday = 0
+  d.setDate(d.getDate() - isoDay);
+  return d;
+}
+
+/** The seven days of `value`'s week, Monday first. */
+export function daysOfWeek(value: Date): Date[] {
+  const start = startOfWeek(value);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return d;
+  });
+}
+
+/** One-letter-ish weekday label, e.g. "Mon". */
+export function shortWeekdayLabel(value: Date): string {
+  return value.toLocaleDateString(undefined, { weekday: 'short' });
+}
+
 export function formatMonthYear(value: Date): string {
   return value.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 }

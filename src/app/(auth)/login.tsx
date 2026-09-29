@@ -113,7 +113,7 @@ export default function LoginScreen() {
             Don&apos;t have an account?
           </Text>
           <Pressable onPress={() => router.replace('/(auth)/signup')} accessibilityRole="button">
-            <Text style={[typography.body, { color: colors.primary, fontWeight: '600' }]}>
+            <Text style={[typography.body, { color: colors.primaryText, fontWeight: '600' }]}>
               Sign up
             </Text>
           </Pressable>

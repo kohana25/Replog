@@ -4,20 +4,24 @@ import React, { useCallback, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { WorkoutHistoryCard } from '@/components/workout/Cards';
+import { WeekStrip } from '@/components/workout/WeekStrip';
 import { WorkoutCalendar } from '@/components/workout/WorkoutCalendar';
 import {
   Badge,
+  BrandMark,
   Button,
   Card,
   ErrorState,
+  InfoHint,
   LoadingState,
-  ProgressBar,
   Screen,
   SectionHeader,
   StatCard,
+  VolumeExplainer,
 } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
 import {
+  daysOfWeek,
   formatRelativeDate,
   greetingForNow,
   pluralize,
@@ -30,13 +34,11 @@ import { useUnit } from '@/providers/SettingsProvider';
 import { getRecentRecords } from '@/services/exercises';
 import { getOverview } from '@/services/progress';
 import { listRoutines } from '@/services/routines';
-import { getRecentWorkouts } from '@/services/workouts';
+import { getRecentWorkouts, getWorkoutDays } from '@/services/workouts';
 import { useTheme } from '@/theme/ThemeProvider';
-import { useResponsive } from '@/theme/useResponsive';
 
 export default function HomeScreen() {
   const { colors, typography, spacing } = useTheme();
-  const { isWide } = useResponsive();
   const router = useRouter();
   const unit = useUnit();
 
@@ -45,13 +47,15 @@ export default function HomeScreen() {
 
   const { data, error, isLoading, isRefreshing, refresh, refetch } = useAsync(
     async () => {
-      const [overview, routines, recentWorkouts, records] = await Promise.all([
+      const week = daysOfWeek(new Date());
+      const [overview, routines, recentWorkouts, records, weekDays] = await Promise.all([
         getOverview(),
         listRoutines(),
         getRecentWorkouts(1),
         getRecentRecords(3),
+        getWorkoutDays(week[0], week[6]),
       ]);
-      return { overview, routines, recentWorkouts, records };
+      return { overview, routines, recentWorkouts, records, weekDays };
     },
     [],
   );
@@ -85,7 +89,12 @@ export default function HomeScreen() {
     router.push('/workout/active');
   };
 
-  const weeklyTarget = Math.max(profile?.training_days?.length ?? 0, 4);
+  /**
+   * A goal only exists if the user set one. `training_days` is the days they
+   * chose to train; when it is empty there is no target, and the week is
+   * reported as what happened rather than as a shortfall.
+   */
+  const weeklyGoal = profile?.training_days?.length ?? 0;
 
   return (
     <Screen
@@ -101,11 +110,17 @@ export default function HomeScreen() {
         />
       }
     >
-      <View style={{ marginBottom: spacing.xl }}>
-        <Text style={[typography.body, { color: colors.textMuted }]}>{greetingForNow()}</Text>
-        <Text accessibilityRole="header" style={[typography.h1, { color: colors.text }]}>
-          {displayName || 'Welcome'}
-        </Text>
+      <View style={{ gap: spacing.lg, marginBottom: spacing.xl }}>
+        <BrandMark size="sm" />
+        <View>
+          <Text style={[typography.body, { color: colors.textMuted }]}>
+            {greetingForNow()}
+            {displayName ? ',' : ''}
+          </Text>
+          <Text accessibilityRole="header" style={[typography.h1, { color: colors.text }]}>
+            {displayName || 'Welcome'}
+          </Text>
+        </View>
       </View>
 
       {isLoading ? (
@@ -171,11 +186,18 @@ export default function HomeScreen() {
           {data ? (
             <View style={{ gap: spacing.md }}>
               <SectionHeader title="This week" />
-              <Card style={{ gap: spacing.md }}>
+              <Card style={{ gap: spacing.lg }}>
                 <View style={styles.rowBetween}>
-                  <Text style={[typography.bodyStrong, { color: colors.text }]}>
-                    {data.overview.workouts_this_week} / {weeklyTarget} workouts
-                  </Text>
+                  <View>
+                    <Text style={[typography.bodyStrong, { color: colors.text }]}>
+                      {pluralize(data.overview.workouts_this_week, 'workout')} this week
+                    </Text>
+                    {weeklyGoal > 0 ? (
+                      <Text style={[typography.caption, { color: colors.textMuted }]}>
+                        Goal: {pluralize(weeklyGoal, 'workout')}
+                      </Text>
+                    ) : null}
+                  </View>
                   {data.overview.current_streak_days > 0 ? (
                     <Badge
                       label={`${data.overview.current_streak_days} day streak`}
@@ -184,25 +206,30 @@ export default function HomeScreen() {
                     />
                   ) : null}
                 </View>
-                <ProgressBar
-                  value={data.overview.workouts_this_week}
-                  max={weeklyTarget}
-                  tone="accent"
-                  label={`${data.overview.workouts_this_week} of ${weeklyTarget} workouts this week`}
-                />
+
+                <WeekStrip workoutDays={data.weekDays} />
               </Card>
 
-              <View style={[styles.statRow, { flexDirection: isWide ? 'row' : 'row' }]}>
+              <View style={styles.statRow}>
                 <StatCard
                   label="Workouts"
                   value={String(data.overview.total_workouts)}
                   icon="barbell-outline"
                 />
-                <StatCard
-                  label="Total volume"
-                  value={formatWeight(data.overview.total_volume, unit)}
-                  icon="trending-up-outline"
-                />
+                <View style={{ flex: 1, minWidth: 150 }}>
+                  <StatCard
+                    label="Total volume"
+                    value={formatWeight(data.overview.total_volume, unit)}
+                    icon="trending-up-outline"
+                  />
+                  {/* Volume is not self-explanatory, so it carries its own
+                      definition rather than being a number nobody can read. */}
+                  <View style={styles.statInfo}>
+                    <InfoHint title="What is Volume?">
+                      <VolumeExplainer />
+                    </InfoHint>
+                  </View>
+                </View>
               </View>
             </View>
           ) : null}
@@ -272,5 +299,6 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   statRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
+  statInfo: { position: 'absolute', top: 2, right: 2 },
   recordRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 });

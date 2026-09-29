@@ -67,7 +67,7 @@ export default function ProfileScreen() {
                 justifyContent: 'center',
               }}
             >
-              <Text style={[typography.h2, { color: colors.primary }]}>
+              <Text style={[typography.h2, { color: colors.primaryText }]}>
                 {initialsFor(profile?.full_name ?? accountUsername)}
               </Text>
             </View>
@@ -136,7 +136,7 @@ export default function ProfileScreen() {
         />
 
         <Text style={[typography.caption, { color: colors.textSubtle, textAlign: 'center' }]}>
-          RepLog · your data is private to your account
+          Movara · your data is private to your account
         </Text>
       </View>
     </Screen>

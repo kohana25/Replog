@@ -63,7 +63,7 @@ export function ActiveExerciseCard({
             onPress={onOpenExercise}
             accessibilityRole="link"
             accessibilityHint="Opens exercise details and history"
-            style={[typography.h3, { color: colors.primary }]}
+            style={[typography.h3, { color: colors.primaryText }]}
           >
             {exercise.name}
           </Text>

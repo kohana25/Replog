@@ -2,17 +2,34 @@
  * Design tokens. Screens never hardcode a hex value — they read from
  * `useTheme()`, which returns one of these palettes.
  *
- * The palette is original to RepLog: a blue/green athletic scheme on a
- * slate neutral ramp, tuned so that text hits WCAG AA contrast on both
- * the light and dark surfaces.
+ * MOVARA PALETTE
+ * The brand colours are sampled from the Movara logo rather than guessed:
+ * the mark runs a gradient from cyan at the top to electric blue at the
+ * bottom, on a near-black field.
+ *
+ *   #05070B  the logo's own background      -> app background
+ *   #0060FC  the blue at the foot of the mark -> primary
+ *   #3FE6FD  the cyan at its head             -> accent / highlight
+ *
+ * Surfaces are a charcoal-navy ramp built from that background so cards
+ * lift off it without going grey, and text is an off-white tuned to clear
+ * WCAG AA on every surface below.
  */
 
 export const palette = {
-  blue600: '#2563EB',
-  blue700: '#1D4ED8',
-  blue500: '#3B82F6',
-  blue100: '#DBEAFE',
-  blue950: '#172554',
+  /** Sampled from the logo: the blue at the bottom of the gradient. */
+  blue500: '#0060FC',
+  blue600: '#0052DC',
+  blue700: '#0041B0',
+  blue300: '#4DA3FF',
+  blue100: '#CFE3FF',
+  blue950: '#08203F',
+
+  /** Sampled from the logo: the cyan at the top of the gradient. */
+  cyan400: '#3FE6FD',
+  cyan500: '#12CDEA',
+  cyan100: '#CBF6FF',
+  cyan950: '#062731',
 
   green500: '#22C55E',
   green600: '#16A34A',
@@ -28,7 +45,7 @@ export const palette = {
   red100: '#FEE2E2',
   red950: '#450A0A',
 
-  slate50: '#F8FAFC',
+  slate50: '#F5F8FC',
   slate100: '#F1F5F9',
   slate200: '#E2E8F0',
   slate300: '#CBD5E1',
@@ -36,9 +53,13 @@ export const palette = {
   slate500: '#64748B',
   slate600: '#475569',
   slate700: '#334155',
-  slate800: '#1E293B',
-  slate900: '#0F172A',
-  slate950: '#020617',
+  /** Charcoal-navy ramp for dark surfaces, keyed to the logo background. */
+  ink700: '#223047',
+  ink800: '#18212F',
+  ink900: '#111823',
+  ink950: '#0B1017',
+  /** The logo's own backdrop — the darkest surface in the app. */
+  ink1000: '#05070B',
 
   white: '#FFFFFF',
   black: '#000000',
@@ -61,6 +82,16 @@ export interface ThemeColors {
   primaryDark: string;
   primarySoft: string;
   onPrimary: string;
+  /**
+   * The brand blue as *text or an icon* on a surface.
+   *
+   * `primary` is the fill behind white button text, so it has to stay dark
+   * enough for that (white on it is 5.15:1). That same blue only reaches
+   * 2.6:1 as small text on a raised card, which fails. This is the lighter
+   * tone to use whenever the brand colour is the foreground rather than the
+   * background.
+   */
+  primaryText: string;
 
   accent: string;
   accentSoft: string;
@@ -85,7 +116,7 @@ export const lightColors: ThemeColors = {
   border: palette.slate200,
   borderStrong: palette.slate300,
 
-  text: palette.slate900,
+  text: palette.ink900,
   textMuted: palette.slate500,
   textSubtle: palette.slate400,
   textInverse: palette.white,
@@ -94,10 +125,11 @@ export const lightColors: ThemeColors = {
   primaryDark: palette.blue700,
   primarySoft: palette.blue100,
   onPrimary: palette.white,
+  primaryText: palette.blue700,
 
-  accent: palette.green600,
-  accentSoft: palette.green100,
-  onAccent: palette.white,
+  accent: palette.cyan500,
+  accentSoft: palette.cyan100,
+  onAccent: palette.ink1000,
 
   danger: palette.red600,
   dangerSoft: palette.red100,
@@ -110,35 +142,36 @@ export const lightColors: ThemeColors = {
 };
 
 export const darkColors: ThemeColors = {
-  background: palette.slate900,
-  surface: palette.slate800,
-  surfaceAlt: '#18253C',
-  surfaceRaised: '#243349',
-  border: '#2F3F57',
-  borderStrong: '#3E5070',
+  background: palette.ink1000,
+  surface: palette.ink900,
+  surfaceAlt: palette.ink800,
+  surfaceRaised: palette.ink700,
+  border: '#1C2836',
+  borderStrong: '#2C3E55',
 
   text: palette.slate50,
-  textMuted: palette.slate400,
-  textSubtle: palette.slate500,
-  textInverse: palette.slate900,
+  textMuted: '#9BA9BC',
+  textSubtle: '#6B7A8F',
+  textInverse: palette.ink1000,
 
   primary: palette.blue500,
   primaryDark: palette.blue600,
   primarySoft: palette.blue950,
   onPrimary: palette.white,
+  primaryText: palette.blue300,
 
-  accent: palette.green500,
-  accentSoft: palette.green950,
-  onAccent: palette.slate900,
+  accent: palette.cyan400,
+  accentSoft: palette.cyan950,
+  onAccent: palette.ink1000,
 
   danger: palette.red500,
   dangerSoft: palette.red950,
   warning: palette.amber500,
   warningSoft: palette.amber950,
 
-  successRow: '#10291E',
-  overlay: 'rgba(2, 6, 23, 0.65)',
-  skeleton: '#2A3A52',
+  successRow: '#0A2335',
+  overlay: 'rgba(5, 7, 11, 0.72)',
+  skeleton: '#1B2532',
 };
 
 /** 4-point spacing scale. */
@@ -186,14 +219,14 @@ export const MIN_TOUCH_TARGET = 44;
 
 export const elevation = {
   card: {
-    shadowColor: '#0F172A',
+    shadowColor: '#05070B',
     shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
   },
   raised: {
-    shadowColor: '#0F172A',
+    shadowColor: '#05070B',
     shadowOpacity: 0.12,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },

@@ -22,7 +22,10 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  theme: 'system',
+  // Movara is a dark-first product: its palette is sampled from a logo on a
+  // near-black field, and that is the design the app is built around. Light
+  // and System remain available in Settings for anyone who prefers them.
+  theme: 'dark',
   unit: 'kg',
   defaultRestSeconds: 90,
 };
