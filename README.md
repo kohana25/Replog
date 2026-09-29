@@ -33,7 +33,7 @@ anything real. This takes about five minutes.
 
 ### 2.2 Run the migrations
 
-Open **SQL Editor** in the Supabase dashboard and run these four files **in order**, from
+Open **SQL Editor** in the Supabase dashboard and run these files **in order**, from
 `supabase/migrations/`:
 
 | # | File | What it does |
@@ -42,9 +42,12 @@ Open **SQL Editor** in the Supabase dashboard and run these four files **in orde
 | 2 | `0002_rls.sql` | Row Level Security policies |
 | 3 | `0003_functions.sql` | Stats queries + personal-record rules |
 | 4 | `0004_seed_exercises.sql` | 55 starter exercises |
+| 5 | `0005_username_auth.sql` | Username on sign-up + case-insensitive uniqueness |
+| 6 | `0006_suggested_workouts.sql` | Suggested Workouts catalogue tables |
+| 7 | `0007_seed_suggested_workouts.sql` | 36 suggested routines |
 
-Paste each file's contents into a new query and hit Run. All four are safe to run again if
-you need to.
+Paste each file's contents into a new query and hit Run. 0002-0007 are safe to run again;
+re-running 0001 fails on a trigger that already exists, which does no harm.
 
 ### 2.3 Get your keys
 
@@ -271,6 +274,36 @@ re-running the calculation for the same workout changes nothing. The logic lives
 The number of consecutive calendar days with at least one completed workout, counting back
 from today — or from yesterday if you have not trained yet today. Computed in the device's
 timezone, not UTC, so it matches the calendar you actually look at.
+
+### Suggested Workouts
+
+The Workout tab suggests routines from the two answers the profile already holds:
+`fitness_goal` and `experience_level`. Those are the only inputs. There are 6 goals and 3
+levels, so 18 combinations, and the catalogue holds two routines for each — 36 in all.
+
+The catalogue lives in `suggested_routines` and `suggested_routine_exercises`, separate from
+`workout_routines` because that table is per-user by construction: `user_id` is NOT NULL and
+its policy is `user_id = auth.uid()`. Holding shared routines there would have meant a
+nullable owner and a weaker policy on the table containing everyone's private routines. The
+catalogue is read-only through the API — a SELECT policy and no write policies at all.
+
+Every suggested exercise is a foreign key into the existing `exercises` library, so a
+suggestion can never introduce a duplicate exercise, and `0007` fails rather than quietly
+producing a shorter routine if a name does not resolve.
+
+Starting one goes through the normal logger. `workouts.routine_id` is a foreign key into
+`workout_routines`, and a suggestion is not a row there, so a workout started from a
+suggestion saves with `routine_id` NULL — otherwise identical, including history and personal
+records. "Add to my routines" copies it through the existing `createRoutine()`, after which it
+behaves exactly like a routine you built yourself.
+
+**Height and weight are not inputs.** They stay where they were, on `profiles` and in
+`body_measurements`, for body metrics and progress. Body size alone does not say which
+routine suits somebody, so nothing here reads it.
+
+Each routine carries a short `source_reference` naming the public guidance its shape follows
+(HHS Physical Activity Guidelines, CDC, ACE). The routines are RepLog's own; no source text is
+reproduced. They are general fitness guidance, not medical advice.
 
 ---
 

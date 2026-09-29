@@ -9,8 +9,12 @@
 | 3 | `migrations/0003_functions.sql` | Stats helpers + `refresh_personal_records` |
 | 4 | `migrations/0004_seed_exercises.sql` | 55 public exercises |
 | 5 | `migrations/0005_username_auth.sql` | Seeds `profiles.username` at sign-up; enforces it case-insensitively |
+| 6 | `migrations/0006_suggested_workouts.sql` | Suggested Workouts catalogue tables + read-only RLS |
+| 7 | `migrations/0007_seed_suggested_workouts.sql` | 36 suggested routines — 2 per goal x experience pair |
 
-Paste each into the Supabase **SQL Editor** and run it. All five are idempotent.
+Paste each into the Supabase **SQL Editor** and run it. 0002-0007 are idempotent; re-running
+0001 fails on its `profiles_set_updated_at` trigger, which is harmless once it has been applied
+once.
 
 > **Required setting:** turn **Confirm email** OFF under Authentication → Sign In / Providers.
 > Accounts are registered under `<username>@users.replog.invalid`, an address that can never
@@ -29,6 +33,8 @@ Paste each into the Supabase **SQL Editor** and run it. All five are idempotent.
 | `workout_sets` | *via workout* | One row per set — never collapsed into JSON |
 | `personal_records` | `user_id` | Unique per (user, exercise, record type) |
 | `body_measurements` | `user_id` | Optional, one entry per day |
+| `suggested_routines` | *none* | Shared catalogue, matched on `fitness_goal` + `experience_level` |
+| `suggested_routine_exercises` | *via routine* | FK into `exercises` — suggestions never add exercises |
 
 Child tables have no `user_id`. Their RLS policies walk up to the parent row, so a set can
 only ever be attached to a workout the caller owns.

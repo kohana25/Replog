@@ -14,7 +14,7 @@ import { formatVolume } from '@/lib/units';
 import { useTheme } from '@/theme/ThemeProvider';
 import { MIN_TOUCH_TARGET } from '@/theme/tokens';
 import type { ExerciseRow, UnitPreference } from '@/types/database';
-import type { WorkoutSummary } from '@/types/models';
+import type { SuggestedRoutineListItem, WorkoutSummary } from '@/types/models';
 import type { RoutineListItem } from '@/services/routines';
 
 /** A saved session in the history list. */
@@ -109,6 +109,77 @@ export function RoutineCard({
       </View>
 
       {routine.folder ? <Badge label={routine.folder} tone="neutral" /> : null}
+    </Card>
+  );
+}
+
+/**
+ * A routine from the Suggested Workouts catalogue.
+ *
+ * Deliberately the same shape as RoutineCard — a suggestion is a routine the
+ * user has not saved yet, not a different kind of thing — with the days-a-week
+ * badge as the one addition.
+ */
+export function SuggestedRoutineCard({
+  routine,
+  onPress,
+  onStart,
+}: {
+  routine: SuggestedRoutineListItem;
+  onPress: () => void;
+  onStart?: () => void;
+}) {
+  const { colors, typography, spacing, radius } = useTheme();
+
+  const meta = [
+    pluralize(routine.exercise_count, 'exercise'),
+    routine.estimated_duration ? `~${routine.estimated_duration} min` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <Card
+      onPress={onPress}
+      accessibilityLabel={`Suggested routine ${routine.name}, ${meta}`}
+      accessibilityHint="Opens the full routine"
+      style={{ gap: spacing.sm }}
+    >
+      <View style={styles.rowBetween}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={2} style={[typography.h3, { color: colors.text }]}>
+            {routine.name}
+          </Text>
+          <Text style={[typography.caption, { color: colors.textMuted }]}>{meta}</Text>
+        </View>
+
+        {onStart ? (
+          <Pressable
+            onPress={onStart}
+            accessibilityRole="button"
+            accessibilityLabel={`Start ${routine.name}`}
+            style={({ pressed }) => [
+              styles.startButton,
+              {
+                backgroundColor: colors.primary,
+                borderRadius: radius.md,
+                opacity: pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            <Ionicons name="play" size={14} color={colors.onPrimary} />
+            <Text style={[typography.caption, { color: colors.onPrimary, fontWeight: '700' }]}>
+              Start
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {routine.days_per_week ? (
+        <View style={{ flexDirection: 'row' }}>
+          <Badge label={`${routine.days_per_week}× a week`} tone="primary" />
+        </View>
+      ) : null}
     </Card>
   );
 }

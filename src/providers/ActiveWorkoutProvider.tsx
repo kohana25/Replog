@@ -17,8 +17,10 @@ import type {
   ActiveWorkoutDraft,
   DraftExercise,
   DraftSet,
+  PlannedExercise,
   RestTimerState,
   RoutineWithExercises,
+  SuggestedRoutineWithExercises,
   SyncStatus,
 } from '@/types/models';
 import { useAuth } from './AuthProvider';
@@ -92,6 +94,8 @@ interface ActiveWorkoutContextValue {
 
   startEmptyWorkout: (name?: string) => void;
   startFromRoutine: (routine: RoutineWithExercises) => void;
+  /** Start straight from a suggestion, without saving it as a routine. */
+  startFromSuggestedRoutine: (routine: SuggestedRoutineWithExercises) => void;
   addExercises: (exercises: AddExerciseInput[]) => void;
   removeExercise: (exerciseLocalId: string) => void;
   moveExercise: (exerciseLocalId: string, direction: -1 | 1) => void;
@@ -213,16 +217,23 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
     setSaveError(null);
   }, []);
 
-  const startFromRoutine = useCallback(
-    (routine: RoutineWithExercises) => {
-      const exercises: DraftExercise[] = routine.routine_exercises.map((item) => ({
+  /**
+   * Turn a planned exercise list into draft exercises.
+   *
+   * Shared by saved routines and suggested ones: the two carry the same plan
+   * (which exercise, how many sets, how long to rest), so the draft they
+   * produce is built in one place rather than twice.
+   */
+  const toDraftExercises = useCallback(
+    (items: PlannedExercise[]): DraftExercise[] =>
+      items.map((item) => ({
         localId: localId(),
         exerciseId: item.exercise_id,
         name: item.exercise.name,
         exerciseType: item.exercise.exercise_type,
         restSeconds: item.rest_seconds ?? settings.defaultRestSeconds,
         notes: item.notes,
-        supersetGroup: item.superset_group,
+        supersetGroup: item.superset_group ?? null,
         sets: Array.from({ length: Math.max(1, item.sets) }, (_, index) => ({
           ...emptySet(index + 1),
           // Routine targets are suggestions, not logged values: they are
@@ -230,14 +241,18 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
           weight: null,
           reps: null,
         })),
-      }));
+      })),
+    [settings.defaultRestSeconds],
+  );
 
+  const startFromRoutine = useCallback(
+    (routine: RoutineWithExercises) => {
       setDraft({
         localId: localId(),
         routineId: routine.id,
         name: routine.name,
         startedAt: Date.now(),
-        exercises,
+        exercises: toDraftExercises(routine.routine_exercises),
         notes: null,
       });
       setRestTimer(NO_REST);
@@ -245,7 +260,34 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
       setSaveError(null);
       void loadPreviousSets(routine.routine_exercises.map((item) => item.exercise_id));
     },
-    [loadPreviousSets, settings.defaultRestSeconds],
+    [loadPreviousSets, toDraftExercises],
+  );
+
+  /**
+   * Start a workout from a suggestion, without saving it as a routine first.
+   *
+   * `routineId` stays null: `workouts.routine_id` is a foreign key into
+   * `workout_routines`, and a suggested routine is not a row there. The
+   * workout is otherwise identical to any other — same draft, same save, same
+   * history and personal records. Someone who wants the plan kept can add it
+   * to their routines from the suggestion screen, and start it that way.
+   */
+  const startFromSuggestedRoutine = useCallback(
+    (routine: SuggestedRoutineWithExercises) => {
+      setDraft({
+        localId: localId(),
+        routineId: null,
+        name: routine.name,
+        startedAt: Date.now(),
+        exercises: toDraftExercises(routine.suggested_routine_exercises),
+        notes: null,
+      });
+      setRestTimer(NO_REST);
+      setSyncStatus('idle');
+      setSaveError(null);
+      void loadPreviousSets(routine.suggested_routine_exercises.map((item) => item.exercise_id));
+    },
+    [loadPreviousSets, toDraftExercises],
   );
 
   const addExercises = useCallback(
@@ -549,6 +591,7 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
       previousSets,
       startEmptyWorkout,
       startFromRoutine,
+      startFromSuggestedRoutine,
       addExercises,
       removeExercise,
       moveExercise,
@@ -577,6 +620,7 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
       previousSets,
       startEmptyWorkout,
       startFromRoutine,
+      startFromSuggestedRoutine,
       addExercises,
       removeExercise,
       moveExercise,
