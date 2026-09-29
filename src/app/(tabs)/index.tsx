@@ -23,6 +23,7 @@ import {
 import { useAsync } from '@/hooks/useAsync';
 import {
   daysOfWeek,
+  localDateKey,
   formatRelativeDate,
   greetingForNow,
   pluralize,
@@ -31,11 +32,13 @@ import {
 import { formatWeight } from '@/lib/units';
 import { useActiveWorkout } from '@/providers/ActiveWorkoutProvider';
 import { useAuth } from '@/providers/AuthProvider';
+import { confirmAction, notify } from '@/lib/alert';
 import { useUnit } from '@/providers/SettingsProvider';
 import { getRecentRecords } from '@/services/exercises';
 import { getOverview } from '@/services/progress';
 import { listRoutines } from '@/services/routines';
 import { getRecentWorkouts, getWorkoutDays } from '@/services/workouts';
+import { clearRestDay, getRestDays, markRestDay } from '@/services/rest-days';
 import { useTheme } from '@/theme/ThemeProvider';
 
 export default function HomeScreen() {
@@ -43,20 +46,21 @@ export default function HomeScreen() {
   const router = useRouter();
   const unit = useUnit();
 
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const { draft, startEmptyWorkout } = useActiveWorkout();
 
   const { data, error, isLoading, isRefreshing, refresh, refetch } = useAsync(
     async () => {
       const week = daysOfWeek(new Date());
-      const [overview, routines, recentWorkouts, records, weekDays] = await Promise.all([
+      const [overview, routines, recentWorkouts, records, weekDays, restDays] = await Promise.all([
         getOverview(),
         listRoutines(),
         getRecentWorkouts(1),
         getRecentRecords(3),
         getWorkoutDays(week[0], week[6]),
+        getRestDays(week[0], week[6]),
       ]);
-      return { overview, routines, recentWorkouts, records, weekDays };
+      return { overview, routines, recentWorkouts, records, weekDays, restDays };
     },
     [],
   );
@@ -88,6 +92,45 @@ export default function HomeScreen() {
   const startEmpty = () => {
     startEmptyWorkout();
     router.push('/workout/active');
+  };
+
+  const todayKey = localDateKey(new Date());
+  const restedToday = data?.restDays.has(todayKey) ?? false;
+  const [restBusy, setRestBusy] = useState(false);
+
+  const takeRestDay = async () => {
+    if (!user || restBusy) return;
+    setRestBusy(true);
+    try {
+      await markRestDay(user.id);
+      await refresh();
+      setCalendarToken((token) => token + 1);
+    } catch {
+      notify('Could not save', 'Please try again.');
+    } finally {
+      setRestBusy(false);
+    }
+  };
+
+  const undoRestDay = async () => {
+    if (restBusy) return;
+    const confirmed = await confirmAction({
+      title: 'Not resting after all?',
+      message: 'Today goes back to being an ordinary day. Nothing else changes.',
+      confirmLabel: 'Undo rest day',
+    });
+    if (!confirmed) return;
+
+    setRestBusy(true);
+    try {
+      await clearRestDay();
+      await refresh();
+      setCalendarToken((token) => token + 1);
+    } catch {
+      notify('Could not undo', 'Please try again.');
+    } finally {
+      setRestBusy(false);
+    }
   };
 
   /**
@@ -132,7 +175,25 @@ export default function HomeScreen() {
         <View style={{ gap: spacing['2xl'] }}>
           {/* ---------------- Today's workout ---------------- */}
           <Card style={{ gap: spacing.md }}>
-            {draft ? (
+            {restedToday ? (
+              <>
+                <Badge label="REST DAY" tone="accent" icon="bed-outline" />
+                <Text style={[typography.h2, { color: colors.text }]}>Today is recovery</Text>
+                <Text style={[typography.body, { color: colors.textMuted, lineHeight: 21 }]}>
+                  Recovery is part of your progress — this is where the work you already did
+                  turns into strength.
+                </Text>
+                {/* Resting does not lock the day: someone who changes their
+                    mind can still train, and the rest day simply goes. */}
+                <Button
+                  label="Undo rest day"
+                  variant="secondary"
+                  icon="arrow-undo-outline"
+                  loading={restBusy}
+                  onPress={() => void undoRestDay()}
+                />
+              </>
+            ) : draft ? (
               <>
                 <Badge label="IN PROGRESS" tone="accent" icon="pulse" />
                 <Text style={[typography.h2, { color: colors.text }]}>{draft.name}</Text>
@@ -172,6 +233,14 @@ export default function HomeScreen() {
                   onPress={() => router.push(`/routines/${data.routines[0].id}`)}
                 />
                 <Button label="Start an empty workout" variant="ghost" size="sm" onPress={startEmpty} />
+                <Button
+                  label="Mark as rest day"
+                  variant="ghost"
+                  size="sm"
+                  icon="bed-outline"
+                  loading={restBusy}
+                  onPress={() => void takeRestDay()}
+                />
               </>
             ) : (
               <>
@@ -186,6 +255,14 @@ export default function HomeScreen() {
                   onPress={() => router.push('/routines/builder')}
                 />
                 <Button label="Start an empty workout" variant="secondary" onPress={startEmpty} />
+                <Button
+                  label="Mark as rest day"
+                  variant="ghost"
+                  size="sm"
+                  icon="bed-outline"
+                  loading={restBusy}
+                  onPress={() => void takeRestDay()}
+                />
               </>
             )}
           </Card>
@@ -215,7 +292,7 @@ export default function HomeScreen() {
                   ) : null}
                 </View>
 
-                <WeekStrip workoutDays={data.weekDays} />
+                <WeekStrip workoutDays={data.weekDays} restDays={data.restDays} />
               </Card>
 
               <View style={styles.statRow}>

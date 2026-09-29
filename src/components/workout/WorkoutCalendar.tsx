@@ -6,6 +6,7 @@ import { Card, IconButton } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
 import { endOfMonth, formatMonthYear, localDateKey, startOfMonth } from '@/lib/format';
 import { getWorkoutDays } from '@/services/workouts';
+import { getRestDays } from '@/services/rest-days';
 import { useTheme } from '@/theme/ThemeProvider';
 
 const WEEKDAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -57,14 +58,16 @@ export function WorkoutCalendar({ refreshToken = 0 }: { refreshToken?: number })
   const monthKey = `${month.getFullYear()}-${month.getMonth()}`;
   const isCurrentMonth = month.getTime() === currentMonth.getTime();
 
-  const {
-    data: workoutDays,
-    error,
-    isLoading,
-  } = useAsync(
-    () => getWorkoutDays(startOfMonth(month), endOfMonth(month)),
-    [monthKey, refreshToken],
-  );
+  const { data, error, isLoading } = useAsync(async () => {
+    const [workouts, rests] = await Promise.all([
+      getWorkoutDays(startOfMonth(month), endOfMonth(month)),
+      getRestDays(startOfMonth(month), endOfMonth(month)),
+    ]);
+    return { workouts, rests };
+  }, [monthKey, refreshToken]);
+
+  const workoutDays = data?.workouts;
+  const restDays = data?.rests;
 
   const cells = useMemo(() => buildCells(month), [month]);
 
@@ -72,6 +75,7 @@ export function WorkoutCalendar({ refreshToken = 0 }: { refreshToken?: number })
     setMonth((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
 
   const trainedThisMonth = workoutDays?.size ?? 0;
+  const restedThisMonth = restDays?.size ?? 0;
 
   return (
     <Card style={{ gap: spacing.md }}>
@@ -97,9 +101,11 @@ export function WorkoutCalendar({ refreshToken = 0 }: { refreshToken?: number })
                 // a claim about the user's training that we cannot make.
                 error
                 ? 'Could not load this month'
-                : trainedThisMonth === 1
-                  ? '1 workout day'
-                  : `${trainedThisMonth} workout days`}
+                : `${trainedThisMonth === 1 ? '1 workout day' : `${trainedThisMonth} workout days`}${
+                      restedThisMonth > 0
+                        ? ` · ${restedThisMonth === 1 ? '1 rest day' : `${restedThisMonth} rest days`}`
+                        : ''
+                    }`}
           </Text>
         </View>
         <IconButton
@@ -131,6 +137,9 @@ export function WorkoutCalendar({ refreshToken = 0 }: { refreshToken?: number })
           if (cell.day === null) return <View key={cell.key} style={styles.cell} />;
 
           const trained = workoutDays?.has(cell.dateKey) ?? false;
+          // A day can only be one or the other on screen; a workout wins,
+          // because it is the thing that actually happened.
+          const rested = !trained && (restDays?.has(cell.dateKey) ?? false);
           const isToday = cell.dateKey === todayKey;
 
           return (
@@ -139,34 +148,45 @@ export function WorkoutCalendar({ refreshToken = 0 }: { refreshToken?: number })
                 accessible
                 accessibilityLabel={`${cell.day} ${formatMonthYear(month)}${
                   isToday ? ', today' : ''
-                }${trained ? ', workout completed' : ''}`}
+                }${trained ? ', workout completed' : rested ? ', rest day' : ''}`}
                 style={[
                   styles.day,
                   {
                     borderRadius: radius.pill,
                     // A filled circle for a workout, a ring for today: the two
                     // never rely on colour alone to tell each other apart.
-                    backgroundColor: trained ? colors.accent : 'transparent',
+                    // Filled for a workout, tinted for recovery, a ring for
+                    // today. A rest day reads as something that happened, not
+                    // as an empty square.
+                    backgroundColor: trained
+                      ? colors.accent
+                      : rested
+                        ? colors.primarySoft
+                        : 'transparent',
                     borderWidth: isToday ? 2 : 0,
                     borderColor: isToday ? colors.primary : 'transparent',
                   },
                 ]}
               >
-                <Text
-                  style={[
-                    typography.caption,
-                    {
-                      color: trained
-                        ? colors.onAccent
-                        : isToday
-                          ? colors.primary
-                          : colors.textMuted,
-                      fontWeight: trained || isToday ? '700' : '400',
-                    },
-                  ]}
-                >
-                  {cell.day}
-                </Text>
+                {rested ? (
+                  <Ionicons name="bed-outline" size={14} color={colors.primaryText} />
+                ) : (
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        color: trained
+                          ? colors.onAccent
+                          : isToday
+                            ? colors.primary
+                            : colors.textMuted,
+                        fontWeight: trained || isToday ? '700' : '400',
+                      },
+                    ]}
+                  >
+                    {cell.day}
+                  </Text>
+                )}
               </View>
             </View>
           );
@@ -189,6 +209,17 @@ export function WorkoutCalendar({ refreshToken = 0 }: { refreshToken?: number })
           <View
             style={[
               styles.legendSwatch,
+              { backgroundColor: colors.primarySoft, borderRadius: radius.pill },
+            ]}
+          >
+            <Ionicons name="bed-outline" size={9} color={colors.primaryText} />
+          </View>
+          <Text style={[typography.caption, { color: colors.textMuted }]}>Rest day</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View
+            style={[
+              styles.legendSwatch,
               {
                 borderRadius: radius.pill,
                 borderWidth: 2,
@@ -199,6 +230,7 @@ export function WorkoutCalendar({ refreshToken = 0 }: { refreshToken?: number })
           <Text style={[typography.caption, { color: colors.textMuted }]}>Today</Text>
         </View>
       </View>
+
     </Card>
   );
 }

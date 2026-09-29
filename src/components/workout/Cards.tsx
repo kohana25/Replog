@@ -14,7 +14,7 @@ import {
 import { formatVolume } from '@/lib/units';
 import { useTheme } from '@/theme/ThemeProvider';
 import { MIN_TOUCH_TARGET } from '@/theme/tokens';
-import type { ExerciseRow, UnitPreference } from '@/types/database';
+import type { ExerciseRow, RestDayRow, UnitPreference } from '@/types/database';
 import type { SuggestedRoutineListItem, WorkoutSummary } from '@/types/models';
 import type { RoutineListItem } from '@/services/routines';
 
@@ -53,6 +53,45 @@ export function WorkoutHistoryCard({
         {workout.total_volume > 0 ? (
           <Meta icon="trending-up-outline" text={formatVolume(workout.total_volume, unit)} />
         ) : null}
+      </View>
+    </Card>
+  );
+}
+
+/**
+ * A day the user marked as recovery, in the history list.
+ *
+ * Deliberately styled like a workout card rather than as a gap or a muted
+ * placeholder: a rest day is something the user decided, and it should read
+ * as an entry in their training record, not as a day missing from it.
+ */
+export function RestDayCard({ restDay }: { restDay: RestDayRow }) {
+  const { colors, typography, spacing, radius } = useTheme();
+
+  return (
+    <Card style={{ gap: spacing.xs }}>
+      <View style={[styles.rowBetween, { gap: spacing.md }]}>
+        <View
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: radius.md,
+            backgroundColor: colors.primarySoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="bed-outline" size={20} color={colors.primaryText} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[typography.h3, { color: colors.text }]}>Rest day</Text>
+          <Text style={[typography.caption, { color: colors.textMuted }]}>
+            {restDay.note?.trim() || 'Recovery'}
+          </Text>
+        </View>
+        <Text style={[typography.caption, { color: colors.textMuted }]}>
+          {formatRelativeDate(restDay.rest_on)}
+        </Text>
       </View>
     </Card>
   );

@@ -155,6 +155,22 @@ export type SuggestedRoutineExerciseRow = {
   notes: string | null;
 }
 
+/**
+ * A day the user marked as recovery (0008).
+ *
+ * `rest_on` is a plain date in the user's own calendar, not a timestamp, and
+ * nothing in the statistics functions reads this table — a rest day can never
+ * change a workout count, volume or a personal record.
+ */
+export type RestDayRow = {
+  id: UUID;
+  user_id: UUID;
+  /** Local calendar date, YYYY-MM-DD. */
+  rest_on: DateString;
+  note: string | null;
+  created_at: Timestamp;
+}
+
 export type WorkoutRow = {
   id: UUID;
   user_id: UUID;
@@ -327,6 +343,12 @@ export type Database = {
         Row: SuggestedRoutineExerciseRow;
         Insert: never;
         Update: never;
+        Relationships: [];
+      };
+      rest_days: {
+        Row: RestDayRow;
+        Insert: Insertable<RestDayRow, 'user_id' | 'rest_on'>;
+        Update: Partial<RestDayRow>;
         Relationships: [];
       };
       workouts: {
