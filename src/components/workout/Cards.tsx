@@ -70,13 +70,15 @@ export function RoutineCard({
   const { colors, typography, spacing, radius } = useTheme();
 
   return (
-    <Card
-      onPress={onPress}
-      accessibilityLabel={`Routine ${routine.name}, ${pluralize(routine.exercise_count, 'exercise')}`}
-      style={{ gap: spacing.sm }}
-    >
+    <Card style={{ gap: spacing.sm }}>
       <View style={styles.rowBetween}>
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`Routine ${routine.name}, ${pluralize(routine.exercise_count, 'exercise')}`}
+          accessibilityHint="Opens the full routine"
+          style={({ pressed }) => [styles.cardBody, { opacity: pressed ? 0.75 : 1 }]}
+        >
           <Text numberOfLines={1} style={[typography.h3, { color: colors.text }]}>
             {routine.name}
           </Text>
@@ -84,7 +86,7 @@ export function RoutineCard({
             {pluralize(routine.exercise_count, 'exercise')}
             {routine.estimated_duration ? ` · ~${routine.estimated_duration} min` : ''}
           </Text>
-        </View>
+        </Pressable>
 
         {onStart ? (
           <Pressable
@@ -139,19 +141,20 @@ export function SuggestedRoutineCard({
     .join(' · ');
 
   return (
-    <Card
-      onPress={onPress}
-      accessibilityLabel={`Suggested routine ${routine.name}, ${meta}`}
-      accessibilityHint="Opens the full routine"
-      style={{ gap: spacing.sm }}
-    >
+    <Card style={{ gap: spacing.sm }}>
       <View style={styles.rowBetween}>
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`Suggested routine ${routine.name}, ${meta}`}
+          accessibilityHint="Opens the full routine"
+          style={({ pressed }) => [styles.cardBody, { opacity: pressed ? 0.75 : 1 }]}
+        >
           <Text numberOfLines={2} style={[typography.h3, { color: colors.text }]}>
             {routine.name}
           </Text>
           <Text style={[typography.caption, { color: colors.textMuted }]}>{meta}</Text>
-        </View>
+        </Pressable>
 
         {onStart ? (
           <Pressable
@@ -253,6 +256,18 @@ function Meta({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: stri
 
 const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  /**
+   * The tappable body of a card that also carries its own action button.
+   *
+   * react-native-web renders `accessibilityRole="button"` as a real <button>
+   * element, so making the whole card pressable *and* putting a Start button
+   * inside it nested one <button> in another — invalid HTML, which the browser
+   * warns about and which leaves the inner button's behaviour up to the
+   * browser. The card container is therefore a plain View, and this is the
+   * button that opens the routine, sitting beside the Start button rather than
+   * around it.
+   */
+  cardBody: { flex: 1, minWidth: 0 },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   startButton: {
