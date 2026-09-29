@@ -11,6 +11,7 @@ import {
   LoadingState,
   Screen,
 } from '@/components/ui';
+import { ExerciseImage } from '@/components/workout/ExerciseImage';
 import { useAsync } from '@/hooks/useAsync';
 import { confirmAction, notify } from '@/lib/alert';
 import { formatClock, muscleLabel, pluralize } from '@/lib/format';
@@ -127,6 +128,11 @@ export default function RoutineDetailScreen() {
                   <Text style={[typography.caption, { color: colors.textSubtle, width: 22 }]}>
                     {index + 1}
                   </Text>
+                  <ExerciseImage
+                    name={item.exercise.name}
+                    muscle={item.exercise.primary_muscle}
+                    size="sm"
+                  />
                   <Text
                     onPress={() => router.push(`/exercises/${item.exercise_id}`)}
                     accessibilityRole="link"

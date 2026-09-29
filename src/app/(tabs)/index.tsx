@@ -4,6 +4,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { WorkoutHistoryCard } from '@/components/workout/Cards';
+import { ExerciseImage } from '@/components/workout/ExerciseImage';
 import { WeekStrip } from '@/components/workout/WeekStrip';
 import { WorkoutCalendar } from '@/components/workout/WorkoutCalendar';
 import {
@@ -147,6 +148,13 @@ export default function HomeScreen() {
               </>
             ) : data && data.routines.length > 0 ? (
               <>
+                {/* The picture of the movement this session opens with —
+                    the spec's "workout card with an exercise image". */}
+                <ExerciseImage
+                  name={data.routines[0].cover_exercise?.name}
+                  muscle={data.routines[0].cover_exercise?.primary_muscle}
+                  size="lg"
+                />
                 <Text style={[typography.caption, { color: colors.textMuted }]}>
                   Ready for today&apos;s workout?
                 </Text>

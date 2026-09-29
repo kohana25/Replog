@@ -5,6 +5,7 @@
 
 import type {
   ExerciseRow,
+  MuscleGroup,
   ExerciseType,
   PersonalRecordRow,
   RoutineExerciseRow,
@@ -32,6 +33,8 @@ export interface SuggestedRoutineWithExercises extends SuggestedRoutineRow {
 /** Card-sized row for the Workout tab — the count, not the exercises. */
 export interface SuggestedRoutineListItem extends SuggestedRoutineRow {
   exercise_count: number;
+  /** First exercise of the routine — the card borrows its picture. */
+  cover_exercise: { name: string; primary_muscle: MuscleGroup } | null;
 }
 
 /**

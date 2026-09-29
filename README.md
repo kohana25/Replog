@@ -306,6 +306,31 @@ Each routine carries a short `source_reference` naming the public guidance its s
 (HHS Physical Activity Guidelines, CDC, ACE). The routines are RepLog's own; no source text is
 reproduced. They are general fitness guidance, not medical advice.
 
+### Exercise images
+
+Each exercise in the library carries a photograph, shown on the Home workout
+card, in the exercise library and picker, on the active workout screen, and as
+a banner on the exercise detail screen.
+
+**Source and licence.** The photographs come from
+[free-exercise-db](https://github.com/yuhonas/free-exercise-db), released under
+**The Unlicense** — a public-domain dedication, so they may be used and
+redistributed freely and **no attribution is required**. This section documents
+the provenance anyway, because a licence you cannot name is a licence you
+cannot rely on.
+
+They are bundled in `assets/exercises/` rather than fetched at runtime, so the
+app works offline and does not depend on anyone else's uptime. Each is resized
+to 480px wide and re-encoded, which keeps all 54 to about 1.3 MB.
+
+`src/lib/exercise-images.ts` maps an exercise to its picture **by normalised
+name**, not by id: ids are per-database uuids, whereas the names of the public
+library are stable and are what `0004` seeds. 54 of the 55 seeded exercises
+have a photograph; Burpee has none in the dataset, and custom exercises a user
+creates never will, so `ExerciseImage` falls back to a muscle-group icon on a
+tinted tile. That fallback is the normal case for custom exercises rather than
+an error, and it also catches an image that fails to decode.
+
 ---
 
 ## 6. Security

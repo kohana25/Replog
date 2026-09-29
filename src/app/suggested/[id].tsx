@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { AppBar, Badge, Button, Card, ErrorState, LoadingState, Screen } from '@/components/ui';
+import { ExerciseImage } from '@/components/workout/ExerciseImage';
 import { useAsync } from '@/hooks/useAsync';
 import { confirmAction, notify } from '@/lib/alert';
 import { experienceLabel, formatClock, goalLabel, muscleLabel, pluralize } from '@/lib/format';
@@ -111,6 +112,11 @@ export default function SuggestedRoutineScreen() {
                   <Text style={[typography.caption, { color: colors.textSubtle, width: 22 }]}>
                     {index + 1}
                   </Text>
+                  <ExerciseImage
+                    name={item.exercise.name}
+                    muscle={item.exercise.primary_muscle}
+                    size="sm"
+                  />
                   <Text
                     onPress={() => router.push(`/exercises/${item.exercise_id}`)}
                     accessibilityRole="link"

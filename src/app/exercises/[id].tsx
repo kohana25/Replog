@@ -14,6 +14,7 @@ import {
   Screen,
   SectionHeader,
 } from '@/components/ui';
+import { ExerciseImage } from '@/components/workout/ExerciseImage';
 import { useAsync } from '@/hooks/useAsync';
 import { confirmAction, notify } from '@/lib/alert';
 import {
@@ -101,6 +102,14 @@ export default function ExerciseDetailScreen() {
           <ErrorState message="Unable to load this exercise." onRetry={refetch} />
         ) : (
           <View style={{ gap: spacing.xl }}>
+            {/* A banner rather than a thumbnail: this is the one screen whose
+                whole subject is the exercise itself. */}
+            <ExerciseImage
+              name={data.exercise.name}
+              muscle={data.exercise.primary_muscle}
+              size="lg"
+            />
+
             <View style={styles.badges}>
               <Badge label={muscleLabel(data.exercise.primary_muscle)} tone="primary" />
               <Badge label={equipmentLabel(data.exercise.equipment)} />

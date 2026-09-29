@@ -3,6 +3,7 @@ import React from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, IconButton } from '@/components/ui';
+import { ExerciseImage } from './ExerciseImage';
 import { formatClock } from '@/lib/format';
 import { useTheme } from '@/theme/ThemeProvider';
 import type { PreviousSetRow, UnitPreference } from '@/types/database';
@@ -57,6 +58,9 @@ export function ActiveExerciseCard({
   return (
     <Card style={{ gap: spacing.sm }}>
       <View style={styles.header}>
+        {/* The draft carries no muscle group, so an exercise without a
+            photograph falls back to the generic barbell icon. */}
+        <ExerciseImage name={exercise.name} size="sm" />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text
             numberOfLines={2}

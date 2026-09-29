@@ -1,6 +1,6 @@
 import { unwrap, unwrapMaybe } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
-import type { UUID, WorkoutRoutineRow } from '@/types/database';
+import type { MuscleGroup, UUID, WorkoutRoutineRow } from '@/types/database';
 import type { RoutineWithExercises } from '@/types/models';
 
 const ROUTINE_COLUMNS =
@@ -10,20 +10,39 @@ const ROUTINE_WITH_EXERCISES = `${ROUTINE_COLUMNS},routine_exercises(id,routine_
 
 export interface RoutineListItem extends WorkoutRoutineRow {
   exercise_count: number;
+  /**
+   * The routine's first exercise, used as the card's picture. A routine has
+   * no artwork of its own, so it borrows the one belonging to the movement it
+   * opens with — which is also the most recognisable thing about it.
+   */
+  cover_exercise: { name: string; primary_muscle: MuscleGroup } | null;
+}
+
+type RoutineExerciseCover = {
+  order_index: number;
+  exercise: { name: string; primary_muscle: MuscleGroup } | null;
+};
+
+/** The first exercise by order_index, or null for an empty routine. */
+function coverOf(items: RoutineExerciseCover[] | null | undefined) {
+  if (!items?.length) return null;
+  const first = [...items].sort((a, b) => a.order_index - b.order_index)[0];
+  return first?.exercise ?? null;
 }
 
 /** Routine list for the Workout tab — one query, no per-row follow-ups. */
 export async function listRoutines(): Promise<RoutineListItem[]> {
   const result = await supabase
     .from('workout_routines')
-    .select(`${ROUTINE_COLUMNS},routine_exercises(count)`)
+    .select(`${ROUTINE_COLUMNS},routine_exercises(order_index,exercise:exercises(name,primary_muscle))`)
     .order('updated_at', { ascending: false });
 
-  const rows = unwrap<(WorkoutRoutineRow & { routine_exercises: { count: number }[] })[]>(result);
+  const rows = unwrap<(WorkoutRoutineRow & { routine_exercises: RoutineExerciseCover[] })[]>(result);
 
   return rows.map((row) => ({
     ...row,
-    exercise_count: row.routine_exercises?.[0]?.count ?? 0,
+    exercise_count: row.routine_exercises?.length ?? 0,
+    cover_exercise: coverOf(row.routine_exercises),
   }));
 }
 

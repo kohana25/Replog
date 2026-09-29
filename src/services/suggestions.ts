@@ -18,7 +18,7 @@
 
 import { unwrap, unwrapMaybe } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
-import type { ExperienceLevel, FitnessGoal, UUID } from '@/types/database';
+import type { ExperienceLevel, FitnessGoal, MuscleGroup, UUID } from '@/types/database';
 import type { SuggestedRoutineListItem, SuggestedRoutineWithExercises } from '@/types/models';
 import { createRoutine } from './routines';
 
@@ -42,19 +42,28 @@ export async function listSuggestedRoutines(
 
   const result = await supabase
     .from('suggested_routines')
-    .select(`${SUGGESTED_COLUMNS},suggested_routine_exercises(count)`)
+    .select(
+      `${SUGGESTED_COLUMNS},suggested_routine_exercises(order_index,exercise:exercises(name,primary_muscle))`,
+    )
     .eq('fitness_goal', goal)
     .eq('experience_level', level)
     .order('order_index', { ascending: true });
 
-  const rows = unwrap<
-    (SuggestedRoutineListItem & { suggested_routine_exercises: { count: number }[] })[]
-  >(result);
+  type Cover = { order_index: number; exercise: { name: string; primary_muscle: MuscleGroup } | null };
+  const rows = unwrap<(SuggestedRoutineListItem & { suggested_routine_exercises: Cover[] })[]>(
+    result,
+  );
 
-  return rows.map((row) => ({
-    ...row,
-    exercise_count: row.suggested_routine_exercises?.[0]?.count ?? 0,
-  }));
+  return rows.map((row) => {
+    const items = row.suggested_routine_exercises ?? [];
+    // Same idea as a saved routine: the card shows the first movement.
+    const first = [...items].sort((a, b) => a.order_index - b.order_index)[0];
+    return {
+      ...row,
+      exercise_count: items.length,
+      cover_exercise: first?.exercise ?? null,
+    };
+  });
 }
 
 export async function getSuggestedRoutine(

@@ -3,6 +3,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Badge, Card } from '@/components/ui';
+import { ExerciseImage } from './ExerciseImage';
 import {
   equipmentLabel,
   formatDuration,
@@ -72,6 +73,11 @@ export function RoutineCard({
   return (
     <Card style={{ gap: spacing.sm }}>
       <View style={styles.rowBetween}>
+        <ExerciseImage
+          name={routine.cover_exercise?.name}
+          muscle={routine.cover_exercise?.primary_muscle}
+          size="sm"
+        />
         <Pressable
           onPress={onPress}
           accessibilityRole="button"
@@ -143,6 +149,11 @@ export function SuggestedRoutineCard({
   return (
     <Card style={{ gap: spacing.sm }}>
       <View style={styles.rowBetween}>
+        <ExerciseImage
+          name={routine.cover_exercise?.name}
+          muscle={routine.cover_exercise?.primary_muscle}
+          size="sm"
+        />
         <Pressable
           onPress={onPress}
           accessibilityRole="button"
@@ -218,16 +229,7 @@ export function ExerciseListItem({
         },
       ]}
     >
-      <View
-        style={[
-          styles.muscleDot,
-          { backgroundColor: colors.surfaceAlt, borderRadius: radius.sm },
-        ]}
-      >
-        <Text style={[typography.micro, { color: colors.textMuted }]}>
-          {muscleLabel(exercise.primary_muscle).slice(0, 2).toUpperCase()}
-        </Text>
-      </View>
+      <ExerciseImage name={exercise.name} muscle={exercise.primary_muscle} size="sm" />
 
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={[typography.bodyStrong, { color: colors.text }]}>
@@ -284,11 +286,5 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderWidth: StyleSheet.hairlineWidth,
     minHeight: MIN_TOUCH_TARGET + 12,
-  },
-  muscleDot: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
