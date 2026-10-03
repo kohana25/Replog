@@ -1,5 +1,5 @@
 """
-Generates RepLog's original app icon / splash artwork.
+Generates Movara's original app icon / splash artwork.
 
 Run with:  python3 scripts/generate-assets.py
 

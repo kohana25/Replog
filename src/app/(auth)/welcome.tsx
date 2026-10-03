@@ -22,13 +22,13 @@ export default function WelcomeScreen() {
             style={{ width: isWide ? 120 : 96, height: isWide ? 120 : 96 }}
             resizeMode="contain"
             accessibilityRole="image"
-            accessibilityLabel="RepLog logo"
+            accessibilityLabel="Movara logo"
           />
           <Text
             accessibilityRole="header"
             style={[typography.display, { color: colors.text, textAlign: 'center' }]}
           >
-            RepLog
+            Movara
           </Text>
           <Text
             style={[

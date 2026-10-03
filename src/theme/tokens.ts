@@ -2,7 +2,7 @@
  * Design tokens. Screens never hardcode a hex value — they read from
  * `useTheme()`, which returns one of these palettes.
  *
- * The palette is original to RepLog: a blue/green athletic scheme on a
+ * The palette is original to Movara: a blue/green athletic scheme on a
  * slate neutral ramp, tuned so that text hits WCAG AA contrast on both
  * the light and dark surfaces.
  */

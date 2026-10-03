@@ -135,7 +135,7 @@ export default function ProfileScreen() {
         />
 
         <Text style={[typography.caption, { color: colors.textSubtle, textAlign: 'center' }]}>
-          RepLog · your data is private to your account
+          Movara · your data is private to your account
         </Text>
       </View>
     </Screen>

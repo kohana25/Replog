@@ -1,4 +1,4 @@
-# RepLog — Personal Fitness & Workout Management App
+# Movara — Personal Fitness & Workout Management App
 
 An Expo (React Native) + Supabase workout tracker. Plan routines, log sets fast while you
 train, and see whether the numbers are actually going up.
@@ -67,7 +67,7 @@ Then make the code visible in the email. Edit **Authentication → Emails → Co
 so the template contains the token rather than only a link:
 
 ```html
-<h2>Confirm your RepLog account</h2>
+<h2>Confirm your Movara account</h2>
 <p>Enter this code in the app:</p>
 <p><strong>{{ .Token }}</strong></p>
 ```
@@ -91,7 +91,7 @@ The reset flow emails a code. To make it work, edit
 for example:
 
 ```html
-<h2>Reset your RepLog password</h2>
+<h2>Reset your Movara password</h2>
 <p>Enter this code in the app:</p>
 <p><strong>{{ .Token }}</strong></p>
 ```
