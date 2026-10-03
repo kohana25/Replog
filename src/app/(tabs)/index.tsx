@@ -69,7 +69,12 @@ export default function HomeScreen() {
     }, []),
   );
 
-  const displayName = (profile?.full_name?.trim() || user?.email?.split('@')[0] || '').trim();
+  const displayName = (
+    profile?.full_name?.trim() ||
+    profile?.username ||
+    user?.email?.split('@')[0] ||
+    ''
+  ).trim();
 
   const startEmpty = () => {
     startEmptyWorkout();

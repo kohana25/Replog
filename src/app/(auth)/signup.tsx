@@ -15,10 +15,10 @@ import { experienceLabel, goalLabel } from '@/lib/format';
 import {
   authErrorMessage,
   isPasswordValid,
+  normalizeUsername,
   validateConfirmPassword,
-  validateEmail,
-  validateFullName,
   validatePassword,
+  validateUsername,
 } from '@/lib/validation';
 import { useAuth } from '@/providers/AuthProvider';
 import { updateProfile } from '@/services/profile';
@@ -39,17 +39,17 @@ const LEVELS: ExperienceLevel[] = ['beginner', 'intermediate', 'advanced'];
 /**
  * Registration against the app's own Supabase Auth instance.
  *
- * The account is created here, a 6-digit code is emailed to the Gmail address,
- * and the verification screen exchanges that code for a session. There is no
- * Google sign-in: the Gmail address is only where the code is delivered.
+ * Users pick a username and a password — no email, no Google sign-in, and no
+ * verification step. The account is created and the session is returned in one
+ * call, so sign-up lands straight on Home. (The Supabase project must have
+ * "Confirm email" disabled; see README.)
  */
 export default function SignUpScreen() {
   const { colors, typography, spacing } = useTheme();
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { signUp, setProfile } = useAuth();
 
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [goal, setGoal] = useState<FitnessGoal | null>(null);
@@ -67,8 +67,7 @@ export default function SignUpScreen() {
     if (submitting) return;
 
     const nextErrors = {
-      fullName: validateFullName(fullName),
-      email: validateEmail(email),
+      username: validateUsername(username),
       password: validatePassword(password),
       confirm: validateConfirmPassword(password, confirm),
     };
@@ -76,44 +75,50 @@ export default function SignUpScreen() {
     setFormError(null);
     if (Object.values(nextErrors).some(Boolean)) return;
 
+    const handle = normalizeUsername(username);
+
     setSubmitting(true);
     try {
-      const result = await signUp({ email, password, fullName });
+      const result = await signUp({ username: handle, password });
 
-      if (result.alreadyRegistered) {
+      if (result.alreadyTaken) {
         setErrors((current) => ({
           ...current,
-          email: 'An account with this email already exists. Please log in instead.',
+          username: 'That username is already taken. Please choose another.',
         }));
         return;
       }
 
-      if (result.needsEmailConfirmation) {
-        // Straight to the code screen — verifying is what logs the user in,
-        // so registration never detours via the login page.
-        router.replace({
-          pathname: '/(auth)/verify-email',
-          params: {
-            email: email.trim().toLowerCase(),
-            ...(goal ? { goal } : {}),
-            ...(level ? { level } : {}),
-          },
-        });
+      if (!result.session || !result.user) {
+        // No session means the Supabase project still requires email
+        // confirmation — which can't work without a real inbox.
+        setFormError('We could not complete sign-up. Please try again.');
         return;
       }
 
-      // Email confirmation is switched off in the Supabase project, so the
-      // session already exists and the root layout is about to show Home.
-      if (result.user && (goal || level)) {
-        try {
-          await updateProfile(result.user.id, {
-            fitness_goal: goal,
-            experience_level: level,
-          });
-        } catch {
-          // Not worth blocking sign-up; editable later from Profile.
+      // Persist the username (and optional onboarding choices) onto the profile
+      // row the handle_new_user() trigger created, so it shows as @handle.
+      try {
+        const updated = await updateProfile(result.user.id, {
+          username: handle,
+          fitness_goal: goal,
+          experience_level: level,
+        });
+        setProfile(updated);
+      } catch (caught) {
+        const code = (caught as { code?: string })?.code;
+        if (code === '23505') {
+          setErrors((current) => ({
+            ...current,
+            username: 'That username is already taken. Please choose another.',
+          }));
+          return;
         }
+        // A non-fatal profile write: the account exists and the session is
+        // live, so let the root layout route to Home. The username is editable
+        // from Profile.
       }
+      // The root layout routes to Home as soon as the session lands.
     } catch (error) {
       setFormError(authErrorMessage(error));
     } finally {
@@ -130,26 +135,15 @@ export default function SignUpScreen() {
         </Text>
 
         <Input
-          label="Full name"
-          value={fullName}
-          onChangeText={setFullName}
-          error={errors.fullName}
-          placeholder="Your name"
-          autoComplete="name"
-          textContentType="name"
-        />
-
-        <Input
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          error={errors.email}
-          helper="Use your Gmail address — that is where your code is sent."
-          placeholder="you@gmail.com"
+          label="Username"
+          value={username}
+          onChangeText={setUsername}
+          error={errors.username}
+          helper="This is how you'll log in and how your name shows in the app."
+          placeholder="yourname"
           autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          textContentType="emailAddress"
+          autoComplete="username-new"
+          textContentType="username"
           autoCorrect={false}
         />
 

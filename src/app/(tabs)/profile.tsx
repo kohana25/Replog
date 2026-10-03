@@ -47,7 +47,8 @@ export default function ProfileScreen() {
     );
   };
 
-  const name = profile?.full_name?.trim() || user?.email?.split('@')[0] || 'Your profile';
+  const name =
+    profile?.full_name?.trim() || profile?.username || user?.email?.split('@')[0] || 'Your profile';
 
   return (
     <Screen bottomInset={draft ? 64 : 0}>
@@ -67,7 +68,7 @@ export default function ProfileScreen() {
               }}
             >
               <Text style={[typography.h2, { color: colors.primary }]}>
-                {initialsFor(profile?.full_name ?? user?.email)}
+                {initialsFor(profile?.full_name ?? profile?.username ?? user?.email)}
               </Text>
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -75,7 +76,7 @@ export default function ProfileScreen() {
                 {name}
               </Text>
               <Text numberOfLines={1} style={[typography.caption, { color: colors.textMuted }]}>
-                {profile?.username ? `@${profile.username}` : user?.email}
+                {profile?.username ? `@${profile.username}` : user?.email?.split('@')[0]}
               </Text>
             </View>
           </View>

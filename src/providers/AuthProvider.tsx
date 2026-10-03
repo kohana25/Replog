@@ -32,20 +32,11 @@ interface AuthContextValue {
   isBootstrapping: boolean;
   isProfileLoading: boolean;
   isAuthenticated: boolean;
-  /** True after a password-recovery deep link is opened. */
-  isRecovering: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (username: string, password: string) => Promise<void>;
   signUp: (input: authService.SignUpInput) => Promise<authService.SignUpResult>;
-  /**
-   * Exchange the emailed 6-digit code for a session. Verifying is also what
-   * signs the new user in, which is why sign-up never returns to Login.
-   */
-  verifyEmailCode: (email: string, code: string) => Promise<Session>;
-  resendVerificationCode: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   setProfile: (profile: ProfileRow) => void;
-  clearRecovery: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -57,7 +48,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfileState] = useState<ProfileRow | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
-  const [isRecovering, setIsRecovering] = useState(false);
 
   const loadedProfileFor = useRef<string | null>(null);
 
@@ -87,7 +77,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const subscription = authService.listenToAuthChanges((next, event) => {
       if (cancelled) return;
       setSession(next);
-      if (event === 'PASSWORD_RECOVERY') setIsRecovering(true);
       if (event === 'SIGNED_OUT') {
         setProfileState(null);
         loadedProfileFor.current = null;
@@ -115,7 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loadedProfileFor.current = id;
       } catch {
         // Leaving profile null is survivable: screens fall back to the
-        // account email and the user can retry from Profile.
+        // username and the user can retry from Profile.
         setProfileState(null);
       } finally {
         setIsProfileLoading(false);
@@ -132,8 +121,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   /* ----------------------------- actions ------------------------------- */
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const next = await authService.signIn(email, password);
+  const signIn = useCallback(async (username: string, password: string) => {
+    const next = await authService.signIn(username, password);
     setSession(next);
   }, []);
 
@@ -141,16 +130,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const result = await authService.signUp(input);
     if (result.session) setSession(result.session);
     return result;
-  }, []);
-
-  const verifyEmailCode = useCallback(async (email: string, code: string) => {
-    const next = await authService.verifyEmailCode(email, code);
-    setSession(next);
-    return next;
-  }, []);
-
-  const resendVerificationCode = useCallback(async (email: string) => {
-    await authService.resendVerificationCode(email);
   }, []);
 
   const signOut = useCallback(async () => {
@@ -173,8 +152,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [hydrateFromProfile],
   );
 
-  const clearRecovery = useCallback(() => setIsRecovering(false), []);
-
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
@@ -183,30 +160,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isBootstrapping,
       isProfileLoading,
       isAuthenticated: Boolean(session),
-      isRecovering,
       signIn,
       signUp,
-      verifyEmailCode,
-      resendVerificationCode,
       signOut,
       refreshProfile,
       setProfile,
-      clearRecovery,
     }),
     [
       session,
       profile,
       isBootstrapping,
       isProfileLoading,
-      isRecovering,
       signIn,
       signUp,
-      verifyEmailCode,
-      resendVerificationCode,
       signOut,
       refreshProfile,
       setProfile,
-      clearRecovery,
     ],
   );
 
