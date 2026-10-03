@@ -290,8 +290,7 @@ function WorkoutHero({
         imageStyle={{ borderRadius: radius.lg }}
       >
         <View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay }]}
+          style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay, pointerEvents: 'none' }]}
         />
         <View style={[styles.heroContent, { padding: spacing.lg, gap: spacing.md }]}>
           {children}

@@ -69,14 +69,20 @@ export function RoutineCard({
 }) {
   const { colors, typography, spacing, radius } = useTheme();
 
+  // The card is a plain container, not a Pressable. The "open" target and the
+  // "Start" button are siblings, never nested — on web react-native-web renders
+  // an accessibilityRole="button" Pressable as a real <button>, and a <button>
+  // inside a <button> is invalid HTML and breaks hydration.
   return (
-    <Card
-      onPress={onPress}
-      accessibilityLabel={`Routine ${routine.name}, ${pluralize(routine.exercise_count, 'exercise')}`}
-      style={{ gap: spacing.sm }}
-    >
+    <Card style={{ gap: spacing.sm }}>
       <View style={styles.rowBetween}>
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`Routine ${routine.name}, ${pluralize(routine.exercise_count, 'exercise')}`}
+          accessibilityHint="Opens the routine"
+          style={({ pressed }) => [{ flex: 1, minWidth: 0 }, { opacity: pressed ? 0.6 : 1 }]}
+        >
           <Text numberOfLines={1} style={[typography.h3, { color: colors.text }]}>
             {routine.name}
           </Text>
@@ -84,7 +90,7 @@ export function RoutineCard({
             {pluralize(routine.exercise_count, 'exercise')}
             {routine.estimated_duration ? ` · ~${routine.estimated_duration} min` : ''}
           </Text>
-        </View>
+        </Pressable>
 
         {onStart ? (
           <Pressable
