@@ -5,10 +5,13 @@
 
 import type {
   ExerciseRow,
+  MuscleGroup,
   ExerciseType,
   PersonalRecordRow,
   RoutineExerciseRow,
   SetType,
+  SuggestedRoutineExerciseRow,
+  SuggestedRoutineRow,
   Timestamp,
   UUID,
   WorkoutExerciseRow,
@@ -20,6 +23,32 @@ import type {
 /** A routine plus its ordered exercises, each with the exercise joined in. */
 export interface RoutineWithExercises extends WorkoutRoutineRow {
   routine_exercises: (RoutineExerciseRow & { exercise: ExerciseRow })[];
+}
+
+/** A suggested routine plus its ordered exercises. */
+export interface SuggestedRoutineWithExercises extends SuggestedRoutineRow {
+  suggested_routine_exercises: (SuggestedRoutineExerciseRow & { exercise: ExerciseRow })[];
+}
+
+/** Card-sized row for the Workout tab — the count, not the exercises. */
+export interface SuggestedRoutineListItem extends SuggestedRoutineRow {
+  exercise_count: number;
+  /** First exercise of the routine — the card borrows its picture. */
+  cover_exercise: { name: string; primary_muscle: MuscleGroup } | null;
+}
+
+/**
+ * The part of a planned exercise the workout draft actually needs, common to
+ * a saved routine and a suggested one. `superset_group` is optional because
+ * only saved routines carry it.
+ */
+export interface PlannedExercise {
+  exercise_id: UUID;
+  exercise: Pick<ExerciseRow, 'name' | 'exercise_type'>;
+  sets: number;
+  rest_seconds: number;
+  notes: string | null;
+  superset_group?: string | null;
 }
 
 /** A saved workout with everything needed to render the detail screen. */

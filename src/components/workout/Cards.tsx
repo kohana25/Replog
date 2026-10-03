@@ -3,6 +3,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Badge, Card } from '@/components/ui';
+import { ExerciseImage } from './ExerciseImage';
 import {
   equipmentLabel,
   formatDuration,
@@ -13,8 +14,8 @@ import {
 import { formatVolume } from '@/lib/units';
 import { useTheme } from '@/theme/ThemeProvider';
 import { MIN_TOUCH_TARGET } from '@/theme/tokens';
-import type { ExerciseRow, UnitPreference } from '@/types/database';
-import type { WorkoutSummary } from '@/types/models';
+import type { ExerciseRow, RestDayRow, UnitPreference } from '@/types/database';
+import type { SuggestedRoutineListItem, WorkoutSummary } from '@/types/models';
 import type { RoutineListItem } from '@/services/routines';
 
 /** A saved session in the history list. */
@@ -57,6 +58,45 @@ export function WorkoutHistoryCard({
   );
 }
 
+/**
+ * A day the user marked as recovery, in the history list.
+ *
+ * Deliberately styled like a workout card rather than as a gap or a muted
+ * placeholder: a rest day is something the user decided, and it should read
+ * as an entry in their training record, not as a day missing from it.
+ */
+export function RestDayCard({ restDay }: { restDay: RestDayRow }) {
+  const { colors, typography, spacing, radius } = useTheme();
+
+  return (
+    <Card style={{ gap: spacing.xs }}>
+      <View style={[styles.rowBetween, { gap: spacing.md }]}>
+        <View
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: radius.md,
+            backgroundColor: colors.primarySoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="bed-outline" size={20} color={colors.primaryText} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[typography.h3, { color: colors.text }]}>Rest day</Text>
+          <Text style={[typography.caption, { color: colors.textMuted }]}>
+            {restDay.note?.trim() || 'Recovery'}
+          </Text>
+        </View>
+        <Text style={[typography.caption, { color: colors.textMuted }]}>
+          {formatRelativeDate(restDay.rest_on)}
+        </Text>
+      </View>
+    </Card>
+  );
+}
+
 /** A reusable routine template. */
 export function RoutineCard({
   routine,
@@ -69,19 +109,20 @@ export function RoutineCard({
 }) {
   const { colors, typography, spacing, radius } = useTheme();
 
-  // The card is a plain container, not a Pressable. The "open" target and the
-  // "Start" button are siblings, never nested — on web react-native-web renders
-  // an accessibilityRole="button" Pressable as a real <button>, and a <button>
-  // inside a <button> is invalid HTML and breaks hydration.
   return (
     <Card style={{ gap: spacing.sm }}>
       <View style={styles.rowBetween}>
+        <ExerciseImage
+          name={routine.cover_exercise?.name}
+          muscle={routine.cover_exercise?.primary_muscle}
+          size="sm"
+        />
         <Pressable
           onPress={onPress}
           accessibilityRole="button"
           accessibilityLabel={`Routine ${routine.name}, ${pluralize(routine.exercise_count, 'exercise')}`}
-          accessibilityHint="Opens the routine"
-          style={({ pressed }) => [{ flex: 1, minWidth: 0 }, { opacity: pressed ? 0.6 : 1 }]}
+          accessibilityHint="Opens the full routine"
+          style={({ pressed }) => [styles.cardBody, { opacity: pressed ? 0.75 : 1 }]}
         >
           <Text numberOfLines={1} style={[typography.h3, { color: colors.text }]}>
             {routine.name}
@@ -119,6 +160,83 @@ export function RoutineCard({
   );
 }
 
+/**
+ * A routine from the Suggested Workouts catalogue.
+ *
+ * Deliberately the same shape as RoutineCard — a suggestion is a routine the
+ * user has not saved yet, not a different kind of thing — with the days-a-week
+ * badge as the one addition.
+ */
+export function SuggestedRoutineCard({
+  routine,
+  onPress,
+  onStart,
+}: {
+  routine: SuggestedRoutineListItem;
+  onPress: () => void;
+  onStart?: () => void;
+}) {
+  const { colors, typography, spacing, radius } = useTheme();
+
+  const meta = [
+    pluralize(routine.exercise_count, 'exercise'),
+    routine.estimated_duration ? `~${routine.estimated_duration} min` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <Card style={{ gap: spacing.sm }}>
+      <View style={styles.rowBetween}>
+        <ExerciseImage
+          name={routine.cover_exercise?.name}
+          muscle={routine.cover_exercise?.primary_muscle}
+          size="sm"
+        />
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`Suggested routine ${routine.name}, ${meta}`}
+          accessibilityHint="Opens the full routine"
+          style={({ pressed }) => [styles.cardBody, { opacity: pressed ? 0.75 : 1 }]}
+        >
+          <Text numberOfLines={2} style={[typography.h3, { color: colors.text }]}>
+            {routine.name}
+          </Text>
+          <Text style={[typography.caption, { color: colors.textMuted }]}>{meta}</Text>
+        </Pressable>
+
+        {onStart ? (
+          <Pressable
+            onPress={onStart}
+            accessibilityRole="button"
+            accessibilityLabel={`Start ${routine.name}`}
+            style={({ pressed }) => [
+              styles.startButton,
+              {
+                backgroundColor: colors.primary,
+                borderRadius: radius.md,
+                opacity: pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            <Ionicons name="play" size={14} color={colors.onPrimary} />
+            <Text style={[typography.caption, { color: colors.onPrimary, fontWeight: '700' }]}>
+              Start
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {routine.days_per_week ? (
+        <View style={{ flexDirection: 'row' }}>
+          <Badge label={`${routine.days_per_week}× a week`} tone="primary" />
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
 /** A row in the exercise library. */
 export function ExerciseListItem({
   exercise,
@@ -150,16 +268,7 @@ export function ExerciseListItem({
         },
       ]}
     >
-      <View
-        style={[
-          styles.muscleDot,
-          { backgroundColor: colors.surfaceAlt, borderRadius: radius.sm },
-        ]}
-      >
-        <Text style={[typography.micro, { color: colors.textMuted }]}>
-          {muscleLabel(exercise.primary_muscle).slice(0, 2).toUpperCase()}
-        </Text>
-      </View>
+      <ExerciseImage name={exercise.name} muscle={exercise.primary_muscle} size="sm" />
 
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={[typography.bodyStrong, { color: colors.text }]}>
@@ -188,6 +297,18 @@ function Meta({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: stri
 
 const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  /**
+   * The tappable body of a card that also carries its own action button.
+   *
+   * react-native-web renders `accessibilityRole="button"` as a real <button>
+   * element, so making the whole card pressable *and* putting a Start button
+   * inside it nested one <button> in another — invalid HTML, which the browser
+   * warns about and which leaves the inner button's behaviour up to the
+   * browser. The card container is therefore a plain View, and this is the
+   * button that opens the routine, sitting beside the Start button rather than
+   * around it.
+   */
+  cardBody: { flex: 1, minWidth: 0 },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   startButton: {
@@ -204,11 +325,5 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderWidth: StyleSheet.hairlineWidth,
     minHeight: MIN_TOUCH_TARGET + 12,
-  },
-  muscleDot: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

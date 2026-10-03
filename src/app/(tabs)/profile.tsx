@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, Screen, ScreenHeading, SectionHeader } from '@/components/ui';
+import { confirmAction, notify } from '@/lib/alert';
 import { experienceLabel, goalLabel, initialsFor } from '@/lib/format';
 import { cmToDisplay, formatWeight } from '@/lib/units';
+import { accountEmailToUsername } from '@/lib/username';
 import { useActiveWorkout } from '@/providers/ActiveWorkoutProvider';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSettings } from '@/providers/SettingsProvider';
@@ -20,35 +22,33 @@ export default function ProfileScreen() {
   const { draft, discardWorkout } = useActiveWorkout();
   const [signingOut, setSigningOut] = useState(false);
 
-  const handleSignOut = () => {
-    Alert.alert(
-      'Log out?',
-      draft
+  const handleSignOut = async () => {
+    const confirmed = await confirmAction({
+      title: 'Log out?',
+      message: draft
         ? 'You have a workout in progress. Logging out will discard it. Your saved workouts stay safe.'
         : 'Your workouts and routines stay saved in your account.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log out',
-          style: 'destructive',
-          onPress: async () => {
-            setSigningOut(true);
-            try {
-              if (draft) discardWorkout();
-              await signOut();
-            } catch {
-              Alert.alert('Could not log out', 'Please try again.');
-            } finally {
-              setSigningOut(false);
-            }
-          },
-        },
-      ],
-    );
+      confirmLabel: 'Log out',
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    setSigningOut(true);
+    try {
+      if (draft) discardWorkout();
+      await signOut();
+    } catch {
+      notify('Could not log out', 'Please try again.');
+    } finally {
+      setSigningOut(false);
+    }
   };
 
-  const name =
-    profile?.full_name?.trim() || profile?.username || user?.email?.split('@')[0] || 'Your profile';
+  // The username is the account's identifier, so it is the fallback whenever
+  // no display name has been set. Reading it back off the account address
+  // keeps the screen right even if the profile row never stored it.
+  const accountUsername = profile?.username ?? accountEmailToUsername(user?.email);
+  const name = profile?.full_name?.trim() || accountUsername || 'Your profile';
 
   return (
     <Screen bottomInset={draft ? 64 : 0}>
@@ -67,8 +67,8 @@ export default function ProfileScreen() {
                 justifyContent: 'center',
               }}
             >
-              <Text style={[typography.h2, { color: colors.primary }]}>
-                {initialsFor(profile?.full_name ?? profile?.username ?? user?.email)}
+              <Text style={[typography.h2, { color: colors.primaryText }]}>
+                {initialsFor(profile?.full_name ?? accountUsername)}
               </Text>
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -76,7 +76,7 @@ export default function ProfileScreen() {
                 {name}
               </Text>
               <Text numberOfLines={1} style={[typography.caption, { color: colors.textMuted }]}>
-                {profile?.username ? `@${profile.username}` : user?.email?.split('@')[0]}
+                {accountUsername ? `@${accountUsername}` : 'No username'}
               </Text>
             </View>
           </View>
@@ -132,7 +132,7 @@ export default function ProfileScreen() {
           variant="secondary"
           icon="log-out-outline"
           loading={signingOut}
-          onPress={handleSignOut}
+          onPress={() => void handleSignOut()}
         />
 
         <Text style={[typography.caption, { color: colors.textSubtle, textAlign: 'center' }]}>

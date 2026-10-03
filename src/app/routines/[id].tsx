@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import {
   AppBar,
@@ -11,7 +11,9 @@ import {
   LoadingState,
   Screen,
 } from '@/components/ui';
+import { ExerciseImage } from '@/components/workout/ExerciseImage';
 import { useAsync } from '@/hooks/useAsync';
+import { confirmAction, notify } from '@/lib/alert';
 import { formatClock, muscleLabel, pluralize } from '@/lib/format';
 import { weightInputValue } from '@/lib/units';
 import { useActiveWorkout } from '@/providers/ActiveWorkoutProvider';
@@ -30,44 +32,38 @@ export default function RoutineDetailScreen() {
 
   const { data, error, isLoading, refetch } = useAsync(() => getRoutine(id as string), [id]);
 
-  const start = () => {
+  const start = async () => {
     if (!data) return;
 
-    const begin = () => {
-      startFromRoutine(data);
-      router.replace('/workout/active');
-    };
-
     if (draft) {
-      Alert.alert(
-        'A workout is already in progress',
-        `Starting ${data.name} will discard "${draft.name}".`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Discard and start', style: 'destructive', onPress: begin },
-        ],
-      );
-      return;
+      const confirmed = await confirmAction({
+        title: 'A workout is already in progress',
+        message: `Starting ${data.name} will discard "${draft.name}".`,
+        confirmLabel: 'Discard and start',
+        destructive: true,
+      });
+      if (!confirmed) return;
     }
-    begin();
+
+    startFromRoutine(data);
+    router.replace('/workout/active');
   };
 
-  const handleDelete = () => {
-    Alert.alert('Delete this routine?', 'Workouts you already logged from it are kept.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteRoutine(id as string);
-            router.replace('/(tabs)/workout');
-          } catch {
-            Alert.alert('Could not delete', 'Please try again.');
-          }
-        },
-      },
-    ]);
+  const handleDelete = async () => {
+    const confirmed = await confirmAction({
+      title: 'Delete this routine?',
+      message: 'Workouts you already logged from it are kept.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await deleteRoutine(id as string);
+      router.replace('/(tabs)/workout');
+    } catch {
+      notify('Could not delete', 'Please try again.');
+    }
   };
 
   const handleDuplicate = async () => {
@@ -76,7 +72,7 @@ export default function RoutineDetailScreen() {
       const newId = await duplicateRoutine(user.id, id as string);
       router.replace(`/routines/${newId}`);
     } catch {
-      Alert.alert('Could not duplicate', 'Please try again.');
+      notify('Could not duplicate', 'Please try again.');
     }
   };
 
@@ -100,7 +96,7 @@ export default function RoutineDetailScreen() {
               <IconButton
                 icon="trash-outline"
                 color={colors.danger}
-                onPress={handleDelete}
+                onPress={() => void handleDelete()}
                 accessibilityLabel="Delete this routine"
               />
             </>
@@ -124,7 +120,7 @@ export default function RoutineDetailScreen() {
               {data.estimated_duration ? ` · about ${data.estimated_duration} min` : ''}
             </Text>
 
-            <Button label="Start workout" icon="play" size="lg" onPress={start} />
+            <Button label="Start workout" icon="play" size="lg" onPress={() => void start()} />
 
             {data.routine_exercises.map((item, index) => (
               <Card key={item.id} style={{ gap: 4 }}>
@@ -132,10 +128,15 @@ export default function RoutineDetailScreen() {
                   <Text style={[typography.caption, { color: colors.textSubtle, width: 22 }]}>
                     {index + 1}
                   </Text>
+                  <ExerciseImage
+                    name={item.exercise.name}
+                    muscle={item.exercise.primary_muscle}
+                    size="sm"
+                  />
                   <Text
                     onPress={() => router.push(`/exercises/${item.exercise_id}`)}
                     accessibilityRole="link"
-                    style={[typography.h3, { color: colors.primary, flex: 1 }]}
+                    style={[typography.h3, { color: colors.primaryText, flex: 1 }]}
                   >
                     {item.exercise.name}
                   </Text>

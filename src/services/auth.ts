@@ -2,44 +2,50 @@
  * All authentication goes through this module. Screens never call
  * supabase.auth directly — that keeps the session rules in one place.
  *
- * Users authenticate with a USERNAME and password. There is no email, no
- * Google sign-in, and no email verification or password-reset flow.
+ * Accounts live in this project's own Supabase Auth/Postgres instance and are
+ * identified by a **username**. Supabase still does the security work —
+ * passwords are bcrypt-hashed by it and never stored by the app, sessions and
+ * refresh tokens are its own, and every Row Level Security policy keeps
+ * comparing against auth.uid() — but the identifier the user types is a
+ * username, mapped to a non-deliverable address by lib/username.ts.
  *
- * Supabase Auth requires an email identifier, so each username is mapped 1:1
- * to a stable, internal synthetic address (`<username>@replog.internal`). This
- * address is never shown to the user and is never a real inbox — it exists only
- * so Supabase has an identifier to key the account on. For sign-up to return a
- * session immediately, the Supabase project must have "Confirm email" turned
- * OFF (there is no inbox to deliver a confirmation to).
+ * There is no email anywhere in this flow: no Google sign-in, no verification
+ * message, and no email-based password recovery.
  */
 
 import type { Session, Subscription, User } from '@supabase/supabase-js';
 
 import { supabase } from '@/lib/supabase';
-import { normalizeUsername } from '@/lib/validation';
-
-/** Internal, non-routable domain for the synthetic auth identifier. */
-const USERNAME_AUTH_DOMAIN = 'replog.internal';
-
-/** Map a username to the internal email Supabase Auth keys the account on. */
-export function usernameToAuthEmail(username: string): string {
-  return `${normalizeUsername(username)}@${USERNAME_AUTH_DOMAIN}`;
-}
+import { normalizeUsername, usernameToAccountEmail } from '@/lib/username';
 
 export interface SignUpInput {
   username: string;
   password: string;
+  fullName: string;
 }
 
 export interface SignUpResult {
   user: User | null;
   session: Session | null;
   /**
-   * True when the username already belongs to an account. Supabase does not
-   * error in that case — to avoid revealing which identifiers are registered it
-   * returns a user with no identities and no session — so it has to be derived.
+   * True when the username is already registered. Supabase does not error in
+   * that case — to avoid telling strangers which accounts exist it returns a
+   * user with no identities — so the flag has to be derived rather than
+   * caught.
    */
-  alreadyTaken: boolean;
+  usernameTaken: boolean;
+}
+
+/**
+ * Thrown when sign-up succeeds but no session comes back, which for username
+ * accounts means the project is still waiting for an email confirmation that
+ * can never arrive. Surfaced as a setup problem rather than a mystery.
+ */
+class EmailConfirmationStillOnError extends Error {
+  constructor() {
+    super('Email not confirmed: Supabase is still set to confirm new accounts.');
+    this.name = 'EmailConfirmationStillOnError';
+  }
 }
 
 /* --------------------- duplicate-request prevention -------------------- */
@@ -49,8 +55,10 @@ export interface SignUpResult {
  *
  * A double tap, a re-render that fires an effect twice, or a hardware
  * keyboard's "go" landing on the same frame as a press used to send two
- * identical requests. Callers that arrive while a request is already running
- * now share its promise instead of starting a new one.
+ * identical requests. The second one is what Supabase counts as another
+ * attempt, and enough of them is what produced spurious rate-limit errors.
+ * Callers that arrive while a request is already running now share its
+ * promise instead of starting a new one.
  */
 const inFlight = new Map<string, Promise<unknown>>();
 
@@ -67,41 +75,39 @@ function dedupe<T>(key: string, run: () => Promise<T>): Promise<T> {
 
 /* ------------------------------- actions ------------------------------ */
 
-export async function signUp({ username, password }: SignUpInput): Promise<SignUpResult> {
-  const handle = normalizeUsername(username);
-  const email = usernameToAuthEmail(handle);
+export async function signUp({ username, password, fullName }: SignUpInput): Promise<SignUpResult> {
+  const name = normalizeUsername(username);
 
-  return dedupe(`signUp:${handle}`, async () => {
+  return dedupe(`signUp:${name}`, async () => {
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: usernameToAccountEmail(name),
       password,
       options: {
-        // Read by the handle_new_user() trigger / set on the profile by the
-        // sign-up screen so the username shows as @handle straight away.
-        data: { username: handle },
+        // Read by the handle_new_user() trigger to seed the profile row.
+        data: { username: name, full_name: fullName.trim() },
       },
     });
 
     if (error) throw error;
 
-    const alreadyTaken =
+    const usernameTaken =
       Boolean(data.user) && !data.session && (data.user?.identities?.length ?? 1) === 0;
 
-    return {
-      user: data.user,
-      session: data.session,
-      alreadyTaken,
-    };
+    // No session and the username is free: the account was created but is
+    // waiting on a confirmation email that cannot be delivered. Say so rather
+    // than dropping the user on a screen with nothing to do.
+    if (!data.session && !usernameTaken) throw new EmailConfirmationStillOnError();
+
+    return { user: data.user, session: data.session, usernameTaken };
   });
 }
 
 export async function signIn(username: string, password: string): Promise<Session> {
-  const handle = normalizeUsername(username);
-  const email = usernameToAuthEmail(handle);
+  const name = normalizeUsername(username);
 
-  return dedupe(`signIn:${handle}`, async () => {
+  return dedupe(`signIn:${name}`, async () => {
     const { data, error } = await supabase.auth.signInWithPassword({
-      email,
+      email: usernameToAccountEmail(name),
       password,
     });
     if (error) throw error;

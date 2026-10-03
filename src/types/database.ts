@@ -121,6 +121,56 @@ export type RoutineExerciseRow = {
   notes: string | null;
 }
 
+/**
+ * A routine from the Suggested Workouts catalogue (0006). Shared reference
+ * data with no owner — read-only to every signed-in user — which is why it
+ * is a separate table from the per-user `workout_routines`.
+ */
+export type SuggestedRoutineRow = {
+  id: UUID;
+  slug: string;
+  fitness_goal: FitnessGoal;
+  experience_level: ExperienceLevel;
+  name: string;
+  description: string | null;
+  /** Minutes, like workout_routines.estimated_duration. */
+  estimated_duration: number | null;
+  days_per_week: number | null;
+  /** Short attribution for the guidance the routine is built on. */
+  source_reference: string | null;
+  order_index: number;
+  created_at: Timestamp;
+}
+
+/** Mirrors RoutineExerciseRow, minus the per-user target weight. */
+export type SuggestedRoutineExerciseRow = {
+  id: UUID;
+  suggested_routine_id: UUID;
+  exercise_id: UUID;
+  order_index: number;
+  sets: number;
+  target_reps: number | null;
+  target_duration: number | null;
+  rest_seconds: number;
+  notes: string | null;
+}
+
+/**
+ * A day the user marked as recovery (0008).
+ *
+ * `rest_on` is a plain date in the user's own calendar, not a timestamp, and
+ * nothing in the statistics functions reads this table — a rest day can never
+ * change a workout count, volume or a personal record.
+ */
+export type RestDayRow = {
+  id: UUID;
+  user_id: UUID;
+  /** Local calendar date, YYYY-MM-DD. */
+  rest_on: DateString;
+  note: string | null;
+  created_at: Timestamp;
+}
+
 export type WorkoutRow = {
   id: UUID;
   user_id: UUID;
@@ -278,6 +328,27 @@ export type Database = {
         Row: RoutineExerciseRow;
         Insert: Insertable<RoutineExerciseRow, 'routine_id' | 'exercise_id'>;
         Update: Partial<RoutineExerciseRow>;
+        Relationships: [];
+      };
+      // Catalogue tables: readable by any signed-in user, written only by
+      // migration. `never` for Insert/Update so a stray write is a compile
+      // error rather than a policy violation at runtime.
+      suggested_routines: {
+        Row: SuggestedRoutineRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      suggested_routine_exercises: {
+        Row: SuggestedRoutineExerciseRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      rest_days: {
+        Row: RestDayRow;
+        Insert: Insertable<RestDayRow, 'user_id' | 'rest_on'>;
+        Update: Partial<RestDayRow>;
         Relationships: [];
       };
       workouts: {

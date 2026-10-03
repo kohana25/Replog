@@ -109,7 +109,7 @@ export default function SettingsScreen() {
             <Card style={{ gap: spacing.sm }}>
               <Text style={[typography.caption, { color: colors.textMuted }]}>Signed in as</Text>
               <Text style={[typography.bodyStrong, { color: colors.text }]}>
-                {profile?.username ? `@${profile.username}` : user?.email?.split('@')[0]}
+                {profile?.username ? `@${profile.username}` : '—'}
               </Text>
               <Text style={[typography.caption, { color: colors.textSubtle }]}>
                 Member since {profile ? new Date(profile.created_at).toLocaleDateString() : '—'}

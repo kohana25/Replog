@@ -2,14 +2,17 @@ import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
 
-import { WorkoutHistoryCard } from '@/components/workout/Cards';
+import { RestDayCard, WorkoutHistoryCard } from '@/components/workout/Cards';
 import { AppBar, Button, EmptyState, ErrorState, LoadingState } from '@/components/ui';
 import { dataErrorMessage } from '@/lib/validation';
 import { useUnit } from '@/providers/SettingsProvider';
 import { listWorkoutHistory } from '@/services/workouts';
+import { listRecentRestDays } from '@/services/rest-days';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useResponsive } from '@/theme/useResponsive';
 import type { WorkoutSummary } from '@/types/models';
+import type { RestDayRow } from '@/types/database';
+import { localDateKey } from '@/lib/format';
 
 export default function WorkoutHistoryScreen() {
   const { colors, spacing } = useTheme();
@@ -18,6 +21,7 @@ export default function WorkoutHistoryScreen() {
   const unit = useUnit();
 
   const [items, setItems] = useState<WorkoutSummary[]>([]);
+  const [restDays, setRestDays] = useState<RestDayRow[]>([]);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -29,6 +33,9 @@ export default function WorkoutHistoryScreen() {
     try {
       const result = await listWorkoutHistory(nextPage);
       setItems((current) => (mode === 'replace' ? result.items : [...current, ...result.items]));
+      // Rest days are few and not paginated; they are merged into whatever
+      // stretch of workouts is currently on screen.
+      if (mode === 'replace') setRestDays(await listRecentRestDays(90));
       setHasMore(result.hasMore);
       setPage(nextPage);
       setError(null);
@@ -59,6 +66,37 @@ export default function WorkoutHistoryScreen() {
     setIsLoadingMore(false);
   };
 
+  /**
+   * One list, newest first, of everything the user did — sessions and the
+   * days they chose to recover. Rest days older than the oldest loaded
+   * workout are held back so that "load more" keeps revealing history in
+   * order rather than dropping older rest days in above newer workouts.
+   */
+  type Entry =
+    | { kind: 'workout'; key: string; date: string; workout: WorkoutSummary }
+    | { kind: 'rest'; key: string; date: string; restDay: RestDayRow };
+
+  const entries: Entry[] = React.useMemo(() => {
+    const workouts: Entry[] = items.map((w) => ({
+      kind: 'workout',
+      key: w.id,
+      date: w.completed_at ? localDateKey(w.completed_at) : '',
+      workout: w,
+    }));
+
+    const oldestLoaded = workouts.length
+      ? workouts[workouts.length - 1].date
+      : hasMore
+        ? localDateKey(new Date())
+        : '';
+
+    const rests: Entry[] = restDays
+      .filter((r) => !hasMore || r.rest_on >= oldestLoaded)
+      .map((r) => ({ kind: 'rest', key: `rest-${r.id}`, date: r.rest_on, restDay: r }));
+
+    return [...workouts, ...rests].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  }, [items, restDays, hasMore]);
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <AppBar title="Workout history" />
@@ -69,8 +107,8 @@ export default function WorkoutHistoryScreen() {
         <ErrorState message={error} onRetry={() => void refresh()} />
       ) : (
         <FlatList
-          data={items}
-          keyExtractor={(item) => item.id}
+          data={entries}
+          keyExtractor={(entry) => entry.key}
           contentContainerStyle={{
             paddingHorizontal: gutter,
             paddingVertical: spacing.lg,
@@ -87,8 +125,8 @@ export default function WorkoutHistoryScreen() {
           ListEmptyComponent={
             <EmptyState
               icon="time-outline"
-              title="No workouts yet"
-              message="Start your first workout and your training history will appear here."
+              title="Nothing logged yet"
+              message="Start your first workout — or mark a rest day — and your history will appear here."
               actionLabel="Start a workout"
               onAction={() => router.replace('/(tabs)/workout')}
             />
@@ -103,13 +141,17 @@ export default function WorkoutHistoryScreen() {
               />
             ) : null
           }
-          renderItem={({ item }) => (
-            <WorkoutHistoryCard
-              workout={item}
-              unit={unit}
-              onPress={() => router.push(`/workout/${item.id}`)}
-            />
-          )}
+          renderItem={({ item: entry }) =>
+            entry.kind === 'rest' ? (
+              <RestDayCard restDay={entry.restDay} />
+            ) : (
+              <WorkoutHistoryCard
+                workout={entry.workout}
+                unit={unit}
+                onPress={() => router.push(`/workout/${entry.workout.id}`)}
+              />
+            )
+          }
         />
       )}
     </View>

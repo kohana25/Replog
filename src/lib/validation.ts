@@ -5,37 +5,41 @@
  * "Incorrect username or password" rather than "no user with that name".
  */
 
+import {
+  normalizeUsername,
+  USERNAME_MAX_LENGTH,
+  USERNAME_MIN_LENGTH,
+  USERNAME_PATTERN,
+} from './username';
+
 export const MIN_PASSWORD_LENGTH = 8;
 
-/* ------------------------------- username ------------------------------ */
-
-export const MIN_USERNAME_LENGTH = 3;
-export const MAX_USERNAME_LENGTH = 20;
+/* ------------------------------ usernames ------------------------------ */
 
 /**
- * The username is the only identifier a user ever types. It maps 1:1 to the
- * internal Supabase Auth email (see src/services/auth.ts), so it is normalised
- * to lowercase and restricted to characters that are safe both as an email
- * local-part and as a public handle.
+ * The sign-up rules for a new username. Login does not use these — someone
+ * with an older account should be told their password is wrong, not that
+ * their own username is invalid.
+ *
+ * The character set is deliberately narrow: it has to survive being used as
+ * the local part of the address the account is registered under (see
+ * lib/username), it is shown to other people as `@name`, and a narrow set is
+ * what stops two usernames looking identical while differing in some
+ * character nobody can see.
  */
-const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._]*$/;
-
-/** Lowercase + trim. The stored username and the auth identifier both use this. */
-export function normalizeUsername(value: string): string {
-  return value.trim().toLowerCase();
-}
-
 export function validateUsername(value: string): string | null {
   const username = normalizeUsername(value);
+
   if (!username) return 'Please enter a username.';
-  if (username.length < MIN_USERNAME_LENGTH) {
-    return `Username must be at least ${MIN_USERNAME_LENGTH} characters.`;
+  if (/\s/.test(username)) return 'Usernames cannot contain spaces.';
+  if (username.length < USERNAME_MIN_LENGTH) {
+    return `Usernames must be at least ${USERNAME_MIN_LENGTH} characters.`;
   }
-  if (username.length > MAX_USERNAME_LENGTH) {
-    return `Username must be ${MAX_USERNAME_LENGTH} characters or fewer.`;
+  if (username.length > USERNAME_MAX_LENGTH) {
+    return `Usernames must be ${USERNAME_MAX_LENGTH} characters or fewer.`;
   }
   if (!USERNAME_PATTERN.test(username)) {
-    return 'Use letters, numbers, dots or underscores only.';
+    return 'Usernames can use letters, numbers and underscores, starting with a letter or number.';
   }
   return null;
 }
@@ -43,33 +47,42 @@ export function validateUsername(value: string): string | null {
 /* ------------------------- password requirements ------------------------ */
 
 export interface PasswordRequirement {
-  id: 'length' | 'letter' | 'number' | 'special';
+  id: 'length' | 'number' | 'special';
+  /** Checklist wording, e.g. "Contains a number". */
   label: string;
+  /** Sentence wording, e.g. "a number" — used to name what is still missing. */
+  shortLabel: string;
   met: boolean;
 }
 
 /**
- * The live checklist shown under the password field. Everything the user
- * sees comes from this one list, so the indicator and the submit button can
- * never disagree about whether a password is acceptable.
+ * The live checklist shown under the password field. The rules the user is
+ * shown and the rules the form enforces are this one list, so the indicator
+ * and the submit button can never disagree about whether a password passes.
  *
- * Spaces are allowed anywhere in a password (passphrases are encouraged); they
- * simply do not count towards the "special character" requirement.
+ * Spaces ARE allowed anywhere in a password (passphrases are encouraged); a
+ * space simply does not count towards the "special character" requirement.
  */
 export function checkPasswordRequirements(value: string): PasswordRequirement[] {
   return [
     {
       id: 'length',
       label: `At least ${MIN_PASSWORD_LENGTH} characters`,
+      shortLabel: `at least ${MIN_PASSWORD_LENGTH} characters`,
       met: value.length >= MIN_PASSWORD_LENGTH,
     },
-    { id: 'letter', label: 'Contains a letter', met: /[a-z]/i.test(value) },
-    { id: 'number', label: 'Contains a number', met: /\d/.test(value) },
+    {
+      id: 'number',
+      label: 'Contains a number',
+      shortLabel: 'a number',
+      met: /\d/.test(value),
+    },
     {
       id: 'special',
       label: 'Contains a special character',
+      shortLabel: 'a special character',
       // Anything that is not a letter, a digit or whitespace — @ ! # $ % & * ?
-      // and friends all qualify. Spaces are allowed but are not "special".
+      // and friends all qualify.
       met: /[^a-z0-9\s]/i.test(value),
     },
   ];
@@ -79,10 +92,25 @@ export function isPasswordValid(value: string): boolean {
   return checkPasswordRequirements(value).every((requirement) => requirement.met);
 }
 
+/**
+ * The submit-time message. The checklist under the field is only shown while
+ * that field has focus, so this names the requirements that are still missing
+ * rather than pointing at a list the user may not be able to see.
+ */
 export function validatePassword(value: string): string | null {
   if (!value) return 'Please enter your password.';
-  if (!isPasswordValid(value)) return 'Please complete all password requirements.';
-  return null;
+
+  const missing = checkPasswordRequirements(value)
+    .filter((requirement) => !requirement.met)
+    .map((requirement) => requirement.shortLabel);
+
+  if (missing.length === 0) return null;
+
+  const list =
+    missing.length === 1
+      ? missing[0]
+      : `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}`;
+  return `Your password still needs ${list}.`;
 }
 
 export function validateConfirmPassword(password: string, confirm: string): string | null {
@@ -152,6 +180,25 @@ function normalise(error: unknown): { raw: string; code: string; status?: number
 }
 
 /**
+ * True when Supabase refuses the account because the project still has email
+ * confirmation switched on.
+ *
+ * Accounts here are registered under an address that cannot receive mail, so
+ * a project that insists on confirming it produces an account nobody can ever
+ * log into. That is a setup mistake rather than something the user did, and
+ * it is worth saying so plainly instead of showing "something went wrong".
+ */
+export function isEmailConfirmationRequiredError(error: unknown): boolean {
+  const { raw, code } = normalise(error);
+  return (
+    code === 'email_not_confirmed' ||
+    raw.includes('email not confirmed') ||
+    raw.includes('error sending') ||
+    raw.includes('failed to send')
+  );
+}
+
+/**
  * Turn a Supabase/network error into something worth showing a person.
  * Never surfaces raw server text, which can leak implementation detail.
  */
@@ -160,6 +207,9 @@ export function authErrorMessage(error: unknown): string {
 
   if (code === 'invalid_credentials' || raw.includes('invalid login credentials')) {
     return 'Incorrect username or password.';
+  }
+  if (isEmailConfirmationRequiredError(error)) {
+    return 'This project still has email confirmation switched on. Turn it off in Supabase → Authentication → Sign In / Providers, then try again.';
   }
   if (code === 'user_already_exists' || raw.includes('already registered')) {
     return 'That username is already taken. Please choose another.';

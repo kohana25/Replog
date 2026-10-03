@@ -17,8 +17,10 @@ import type {
   ActiveWorkoutDraft,
   DraftExercise,
   DraftSet,
+  PlannedExercise,
   RestTimerState,
   RoutineWithExercises,
+  SuggestedRoutineWithExercises,
   SyncStatus,
 } from '@/types/models';
 import { useAuth } from './AuthProvider';
@@ -92,6 +94,8 @@ interface ActiveWorkoutContextValue {
 
   startEmptyWorkout: (name?: string) => void;
   startFromRoutine: (routine: RoutineWithExercises) => void;
+  /** Start straight from a suggestion, without saving it as a routine. */
+  startFromSuggestedRoutine: (routine: SuggestedRoutineWithExercises) => void;
   addExercises: (exercises: AddExerciseInput[]) => void;
   removeExercise: (exerciseLocalId: string) => void;
   moveExercise: (exerciseLocalId: string, direction: -1 | 1) => void;
@@ -130,6 +134,13 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
   const [previousSets, setPreviousSets] = useState<Record<UUID, PreviousSetRow[]>>({});
 
   const restoredRef = useRef(false);
+
+  /**
+   * The draft as of this render, readable from an event handler without
+   * putting `draft` in every callback's dependency list.
+   */
+  const draftRef = useRef<ActiveWorkoutDraft | null>(draft);
+  draftRef.current = draft;
 
   /* ------------------------- restore on launch ------------------------- */
   useEffect(() => {
@@ -206,16 +217,23 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
     setSaveError(null);
   }, []);
 
-  const startFromRoutine = useCallback(
-    (routine: RoutineWithExercises) => {
-      const exercises: DraftExercise[] = routine.routine_exercises.map((item) => ({
+  /**
+   * Turn a planned exercise list into draft exercises.
+   *
+   * Shared by saved routines and suggested ones: the two carry the same plan
+   * (which exercise, how many sets, how long to rest), so the draft they
+   * produce is built in one place rather than twice.
+   */
+  const toDraftExercises = useCallback(
+    (items: PlannedExercise[]): DraftExercise[] =>
+      items.map((item) => ({
         localId: localId(),
         exerciseId: item.exercise_id,
         name: item.exercise.name,
         exerciseType: item.exercise.exercise_type,
         restSeconds: item.rest_seconds ?? settings.defaultRestSeconds,
         notes: item.notes,
-        supersetGroup: item.superset_group,
+        supersetGroup: item.superset_group ?? null,
         sets: Array.from({ length: Math.max(1, item.sets) }, (_, index) => ({
           ...emptySet(index + 1),
           // Routine targets are suggestions, not logged values: they are
@@ -223,14 +241,18 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
           weight: null,
           reps: null,
         })),
-      }));
+      })),
+    [settings.defaultRestSeconds],
+  );
 
+  const startFromRoutine = useCallback(
+    (routine: RoutineWithExercises) => {
       setDraft({
         localId: localId(),
         routineId: routine.id,
         name: routine.name,
         startedAt: Date.now(),
-        exercises,
+        exercises: toDraftExercises(routine.routine_exercises),
         notes: null,
       });
       setRestTimer(NO_REST);
@@ -238,7 +260,34 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
       setSaveError(null);
       void loadPreviousSets(routine.routine_exercises.map((item) => item.exercise_id));
     },
-    [loadPreviousSets, settings.defaultRestSeconds],
+    [loadPreviousSets, toDraftExercises],
+  );
+
+  /**
+   * Start a workout from a suggestion, without saving it as a routine first.
+   *
+   * `routineId` stays null: `workouts.routine_id` is a foreign key into
+   * `workout_routines`, and a suggested routine is not a row there. The
+   * workout is otherwise identical to any other — same draft, same save, same
+   * history and personal records. Someone who wants the plan kept can add it
+   * to their routines from the suggestion screen, and start it that way.
+   */
+  const startFromSuggestedRoutine = useCallback(
+    (routine: SuggestedRoutineWithExercises) => {
+      setDraft({
+        localId: localId(),
+        routineId: null,
+        name: routine.name,
+        startedAt: Date.now(),
+        exercises: toDraftExercises(routine.suggested_routine_exercises),
+        notes: null,
+      });
+      setRestTimer(NO_REST);
+      setSyncStatus('idle');
+      setSaveError(null);
+      void loadPreviousSets(routine.suggested_routine_exercises.map((item) => item.exercise_id));
+    },
+    [loadPreviousSets, toDraftExercises],
   );
 
   const addExercises = useCallback(
@@ -426,36 +475,42 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
    */
   const toggleSetCompleted = useCallback(
     (exerciseLocalId: string, setLocalId: string): boolean => {
-      let becameComplete = false;
-      let restSeconds = 0;
+      // Decide from the current draft rather than from inside the state
+      // updater. React does not promise to run an updater synchronously, so
+      // reading a flag it assigned is a race: when it loses, the caller gets
+      // no haptic and the rest timer never starts.
+      const exercise = draftRef.current?.exercises.find(
+        (item) => item.localId === exerciseLocalId,
+      );
+      const target = exercise?.sets.find((set) => set.localId === setLocalId);
+      if (!exercise || !target) return false;
+
+      const becameComplete = !target.completed;
 
       setDraft((current) => {
         if (!current) return current;
         return {
           ...current,
-          exercises: current.exercises.map((exercise) => {
-            if (exercise.localId !== exerciseLocalId) return exercise;
+          exercises: current.exercises.map((item) => {
+            if (item.localId !== exerciseLocalId) return item;
 
-            const history = previousSets[exercise.exerciseId] ?? [];
+            const history = previousSets[item.exerciseId] ?? [];
 
             return {
-              ...exercise,
-              sets: exercise.sets.map((set) => {
+              ...item,
+              sets: item.sets.map((set) => {
                 if (set.localId !== setLocalId) return set;
 
                 if (set.completed) return { ...set, completed: false };
 
-                becameComplete = true;
-                restSeconds = exercise.restSeconds;
-
                 const reference =
-                  history.find((item) => item.set_number === set.setNumber) ??
+                  history.find((entry) => entry.set_number === set.setNumber) ??
                   history[history.length - 1];
 
                 const needsLoad =
-                  exercise.exerciseType === 'strength' || exercise.exerciseType === 'bodyweight';
+                  item.exerciseType === 'strength' || item.exerciseType === 'bodyweight';
                 const needsDuration =
-                  exercise.exerciseType === 'duration' || exercise.exerciseType === 'cardio';
+                  item.exerciseType === 'duration' || item.exerciseType === 'cardio';
 
                 return {
                   ...set,
@@ -473,8 +528,8 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
         };
       });
 
-      if (becameComplete && restSeconds > 0) {
-        startRest(restSeconds, 'Rest');
+      if (becameComplete && exercise.restSeconds > 0) {
+        startRest(exercise.restSeconds, 'Rest');
       }
       return becameComplete;
     },
@@ -536,6 +591,7 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
       previousSets,
       startEmptyWorkout,
       startFromRoutine,
+      startFromSuggestedRoutine,
       addExercises,
       removeExercise,
       moveExercise,
@@ -564,6 +620,7 @@ export function ActiveWorkoutProvider({ children }: { children: React.ReactNode 
       previousSets,
       startEmptyWorkout,
       startFromRoutine,
+      startFromSuggestedRoutine,
       addExercises,
       removeExercise,
       moveExercise,

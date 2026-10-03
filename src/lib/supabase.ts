@@ -36,7 +36,8 @@ export const supabase = createClient<Database>(
       persistSession: true,
       // Refresh the access token before it expires.
       autoRefreshToken: true,
-      // There is no email/recovery deep-link flow; nothing to parse from a URL.
+      // Nothing arrives by link: accounts are username + password, with no
+      // confirmation or password-recovery flow to parse a URL for.
       detectSessionInUrl: false,
     },
     global: {

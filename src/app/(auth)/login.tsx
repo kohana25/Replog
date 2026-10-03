@@ -1,38 +1,51 @@
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { AppBar, Button, InlineError, Input, Screen } from '@/components/ui';
-import { authErrorMessage, validateUsername } from '@/lib/validation';
+import { stripUsernameSpaces } from '@/lib/username';
+import { authErrorMessage } from '@/lib/validation';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTheme } from '@/theme/ThemeProvider';
 
 /**
- * Username + password login against the app's own Supabase Auth instance.
+ * Username and password, against this project's own Supabase Auth instance.
  *
- * There is no email, no "continue with Google", and no password-reset flow:
- * the account's username and password are the app's own.
+ * No email is involved anywhere: no Google sign-in, nothing to verify, and no
+ * emailed password recovery. A correct username and password land on Home.
  */
 export default function LoginScreen() {
   const { colors, typography, spacing } = useTheme();
   const router = useRouter();
   const { signIn } = useAuth();
 
-  const [username, setUsername] = useState('');
+  // Sign-up hands the username over, so logging in straight afterwards is one
+  // field rather than two.
+  const params = useLocalSearchParams<{ username?: string }>();
+  const prefilledUsername = stripUsernameSpaces(params.username ?? '').toLowerCase();
+
+  const [username, setUsername] = useState(prefilledUsername);
   const [password, setPassword] = useState('');
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (prefilledUsername) setUsername(prefilledUsername);
+  }, [prefilledUsername]);
+
   const handleSubmit = async () => {
-    // The button is disabled while the request is in flight; this also stops
-    // the keyboard's "go" key landing on top of a tap.
+    // The button shows a spinner while the request is in flight; this also
+    // stops the keyboard's "go" key landing on top of a tap.
     if (submitting) return;
 
-    const nextUsernameError = validateUsername(username);
-    // Deliberately only "is it present" here: telling the user their stored
-    // password is too short would leak information about the account.
+    /*
+     * Presence only, on both fields. Telling someone their own username is
+     * too short, or their stored password too weak, would both leak something
+     * about the account and stop an older account signing in at all.
+     */
+    const nextUsernameError = username.trim() ? null : 'Please enter your username.';
     const nextPasswordError = password ? null : 'Please enter your password.';
 
     setUsernameError(nextUsernameError);
@@ -62,7 +75,7 @@ export default function LoginScreen() {
         <Input
           label="Username"
           value={username}
-          onChangeText={setUsername}
+          onChangeText={(next) => setUsername(stripUsernameSpaces(next))}
           error={usernameError}
           placeholder="yourname"
           autoCapitalize="none"
@@ -100,7 +113,7 @@ export default function LoginScreen() {
             Don&apos;t have an account?
           </Text>
           <Pressable onPress={() => router.replace('/(auth)/signup')} accessibilityRole="button">
-            <Text style={[typography.body, { color: colors.primary, fontWeight: '600' }]}>
+            <Text style={[typography.body, { color: colors.primaryText, fontWeight: '600' }]}>
               Sign up
             </Text>
           </Pressable>

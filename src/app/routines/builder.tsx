@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ExercisePickerSheet } from '@/components/workout/ExercisePickerSheet';
 import {
@@ -14,6 +14,7 @@ import {
   LoadingState,
   Screen,
 } from '@/components/ui';
+import { confirmAction } from '@/lib/alert';
 import { muscleLabel } from '@/lib/format';
 import { parseNumericInput, parseWeightInput, weightInputValue } from '@/lib/units';
 import { clampRestSeconds, dataErrorMessage, validateRequiredText } from '@/lib/validation';
@@ -113,6 +114,21 @@ export default function RoutineBuilderScreen() {
       [next[index], next[target]] = [next[target], next[index]];
       return next;
     });
+  };
+
+  const handleCancel = async () => {
+    if (rows.length === 0) {
+      router.back();
+      return;
+    }
+    const confirmed = await confirmAction({
+      title: 'Discard changes?',
+      message: 'Your edits will not be saved.',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+      destructive: true,
+    });
+    if (confirmed) router.back();
   };
 
   const handleSave = async () => {
@@ -307,14 +323,7 @@ export default function RoutineBuilderScreen() {
           <Button
             label="Cancel"
             variant="ghost"
-            onPress={() =>
-              rows.length > 0
-                ? Alert.alert('Discard changes?', 'Your edits will not be saved.', [
-                    { text: 'Keep editing', style: 'cancel' },
-                    { text: 'Discard', style: 'destructive', onPress: () => router.back() },
-                  ])
-                : router.back()
-            }
+            onPress={() => void handleCancel()}
           />
         </View>
       </Screen>

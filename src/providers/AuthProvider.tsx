@@ -104,7 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loadedProfileFor.current = id;
       } catch {
         // Leaving profile null is survivable: screens fall back to the
-        // username and the user can retry from Profile.
+        // account email and the user can retry from Profile.
         setProfileState(null);
       } finally {
         setIsProfileLoading(false);

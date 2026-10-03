@@ -21,6 +21,7 @@ import { useUnit } from '@/providers/SettingsProvider';
 import { useActiveWorkout } from '@/providers/ActiveWorkoutProvider';
 import { getRecentRecords } from '@/services/exercises';
 import { getMuscleDistribution, getOverview, getWeeklyVolume } from '@/services/progress';
+import { listRecentRestDays } from '@/services/rest-days';
 import { useTheme } from '@/theme/ThemeProvider';
 
 export default function ProgressScreen() {
@@ -30,13 +31,14 @@ export default function ProgressScreen() {
   const { draft } = useActiveWorkout();
 
   const { data, error, isLoading, isRefreshing, refresh, refetch } = useAsync(async () => {
-    const [overview, weekly, muscles, records] = await Promise.all([
+    const [overview, weekly, muscles, records, restDays] = await Promise.all([
       getOverview(),
       getWeeklyVolume(8),
       getMuscleDistribution(30),
       getRecentRecords(8),
+      listRecentRestDays(365),
     ]);
-    return { overview, weekly, muscles, records };
+    return { overview, weekly, muscles, records, restDays };
   }, []);
 
   useFocusEffect(
@@ -101,6 +103,14 @@ export default function ProgressScreen() {
               label="Last workout"
               value={formatRelativeDate(data.overview.last_workout_at)}
               icon="calendar-outline"
+            />
+            {/* Recovery sits among the other totals, not apart from them and
+                not as a shortfall: it is training the user chose to do. */}
+            <StatCard
+              label="Rest days"
+              value={String(data.restDays.length)}
+              hint="Recovery you logged"
+              icon="bed-outline"
             />
           </View>
 

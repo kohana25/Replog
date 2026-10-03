@@ -1,6 +1,8 @@
 export { AppBar } from './AppBar';
+export { BrandMark } from './BrandMark';
 export { Button, IconButton } from './Button';
 export { Badge, Card, Chip, ProgressBar, SectionHeader, StatCard } from './Card';
+export { InfoHint, VolumeExplainer } from './InfoHint';
 export { Input } from './Input';
 export { OptionGroup, type Option } from './OptionGroup';
 export { PasswordRequirements } from './PasswordRequirements';

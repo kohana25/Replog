@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Keyboard, Pressable, Text, View } from 'react-native';
 
 import {
   AppBar,
@@ -12,16 +12,16 @@ import {
   Screen,
 } from '@/components/ui';
 import { experienceLabel, goalLabel } from '@/lib/format';
+import { normalizeUsername, stripUsernameSpaces, USERNAME_MAX_LENGTH } from '@/lib/username';
 import {
   authErrorMessage,
-  isPasswordValid,
-  normalizeUsername,
   validateConfirmPassword,
+  validateFullName,
   validatePassword,
   validateUsername,
 } from '@/lib/validation';
 import { useAuth } from '@/providers/AuthProvider';
-import { updateProfile } from '@/services/profile';
+import { completeSignUpProfile } from '@/services/profile';
 import { useTheme } from '@/theme/ThemeProvider';
 import type { ExperienceLevel, FitnessGoal } from '@/types/database';
 
@@ -39,16 +39,16 @@ const LEVELS: ExperienceLevel[] = ['beginner', 'intermediate', 'advanced'];
 /**
  * Registration against the app's own Supabase Auth instance.
  *
- * Users pick a username and a password — no email, no Google sign-in, and no
- * verification step. The account is created and the session is returned in one
- * call, so sign-up lands straight on Home. (The Supabase project must have
- * "Confirm email" disabled; see README.)
+ * The user picks a username and a password. Supabase hashes the password and
+ * issues the session immediately — there is nothing to verify, no email, and
+ * no Google sign-in — so a new account goes straight to Home.
  */
 export default function SignUpScreen() {
   const { colors, typography, spacing } = useTheme();
   const router = useRouter();
   const { signUp, setProfile } = useAuth();
 
+  const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -59,29 +59,50 @@ export default function SignUpScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const passwordComplete = isPasswordValid(password);
+  /**
+   * The requirement checklist belongs to the password field, so it appears
+   * only once that field is being edited *and* has something in it — never on
+   * an untouched form. Focusing any other input blurs the password, which
+   * hides it again.
+   */
+  const [passwordFocused, setPasswordFocused] = useState(false);
+  const showPasswordRequirements = passwordFocused && password.length > 0;
+
+  /** Focusing another text field. Blur alone would do it; this is immediate. */
+  const leavePassword = () => setPasswordFocused(false);
+
+  /**
+   * Chips are not text inputs, so tapping one does not move focus by itself
+   * (the ScrollView keeps taps from dismissing the keyboard). Dismissing it
+   * explicitly blurs the password field, which is what hides the checklist.
+   */
+  const leavePasswordForChips = () => {
+    Keyboard.dismiss();
+    setPasswordFocused(false);
+  };
 
   const handleSubmit = async () => {
-    // The button is disabled while a request is in flight; this is the guard
-    // for the keyboard's return key arriving on the same frame as a tap.
+    // The button shows a spinner while a request is in flight; this is the
+    // guard for the keyboard's return key arriving on the same frame as a tap.
     if (submitting) return;
 
     const nextErrors = {
+      fullName: validateFullName(fullName),
       username: validateUsername(username),
       password: validatePassword(password),
       confirm: validateConfirmPassword(password, confirm),
     };
     setErrors(nextErrors);
     setFormError(null);
+    // An invalid password can never be submitted: validatePassword() names
+    // whichever requirements are still missing and the request is not sent.
     if (Object.values(nextErrors).some(Boolean)) return;
-
-    const handle = normalizeUsername(username);
 
     setSubmitting(true);
     try {
-      const result = await signUp({ username: handle, password });
+      const result = await signUp({ username, password, fullName });
 
-      if (result.alreadyTaken) {
+      if (result.usernameTaken) {
         setErrors((current) => ({
           ...current,
           username: 'That username is already taken. Please choose another.',
@@ -89,36 +110,19 @@ export default function SignUpScreen() {
         return;
       }
 
-      if (!result.session || !result.user) {
-        // No session means the Supabase project still requires email
-        // confirmation — which can't work without a real inbox.
-        setFormError('We could not complete sign-up. Please try again.');
-        return;
-      }
-
-      // Persist the username (and optional onboarding choices) onto the profile
-      // row the handle_new_user() trigger created, so it shows as @handle.
-      try {
-        const updated = await updateProfile(result.user.id, {
-          username: handle,
+      // The session exists from here, and the root layout is about to show
+      // Home. Write the username onto the profile row the sign-up trigger
+      // just created — belt and braces with the trigger, so the name is
+      // stored even on a database where 0005 has not been applied yet — along
+      // with the optional onboarding answers.
+      if (result.user) {
+        const saved = await completeSignUpProfile(result.user.id, {
+          username: normalizeUsername(username),
           fitness_goal: goal,
           experience_level: level,
         });
-        setProfile(updated);
-      } catch (caught) {
-        const code = (caught as { code?: string })?.code;
-        if (code === '23505') {
-          setErrors((current) => ({
-            ...current,
-            username: 'That username is already taken. Please choose another.',
-          }));
-          return;
-        }
-        // A non-fatal profile write: the account exists and the session is
-        // live, so let the root layout route to Home. The username is editable
-        // from Profile.
+        if (saved) setProfile(saved);
       }
-      // The root layout routes to Home as soon as the session lands.
     } catch (error) {
       setFormError(authErrorMessage(error));
     } finally {
@@ -135,23 +139,41 @@ export default function SignUpScreen() {
         </Text>
 
         <Input
+          label="Full name"
+          value={fullName}
+          onChangeText={setFullName}
+          onFocus={leavePassword}
+          error={errors.fullName}
+          placeholder="Your name"
+          autoComplete="name"
+          textContentType="name"
+        />
+
+        <Input
           label="Username"
           value={username}
-          onChangeText={setUsername}
+          // A username cannot contain a space, so one is never let in rather
+          // than being rejected after the fact.
+          onChangeText={(next) => setUsername(stripUsernameSpaces(next))}
+          onFocus={leavePassword}
           error={errors.username}
-          helper="This is how you'll log in and how your name shows in the app."
+          helper="This is what you will log in with. Letters, numbers and underscores."
           placeholder="yourname"
           autoCapitalize="none"
           autoComplete="username-new"
           textContentType="username"
           autoCorrect={false}
+          maxLength={USERNAME_MAX_LENGTH}
         />
 
         <View style={{ gap: spacing.md }}>
           <Input
             label="Password"
             value={password}
+            // Spaces are allowed in passwords (passphrases welcome).
             onChangeText={setPassword}
+            onFocus={() => setPasswordFocused(true)}
+            onBlur={() => setPasswordFocused(false)}
             error={errors.password}
             placeholder="Create a password"
             secure
@@ -160,13 +182,15 @@ export default function SignUpScreen() {
             textContentType="newPassword"
           />
 
-          <PasswordRequirements password={password} />
+          {/* Only once the user is actually entering a password. */}
+          {showPasswordRequirements ? <PasswordRequirements password={password} /> : null}
         </View>
 
         <Input
           label="Confirm password"
           value={confirm}
           onChangeText={setConfirm}
+          onFocus={leavePassword}
           error={errors.confirm}
           placeholder="Repeat your password"
           secure
@@ -183,7 +207,10 @@ export default function SignUpScreen() {
             label="What are you training for?"
             options={GOALS.map((value) => ({ value, label: goalLabel(value) }))}
             value={goal}
-            onChange={setGoal}
+            onChange={(next) => {
+              leavePasswordForChips();
+              setGoal(next);
+            }}
             allowClear={false}
           />
 
@@ -191,7 +218,10 @@ export default function SignUpScreen() {
             label="Experience"
             options={LEVELS.map((value) => ({ value, label: experienceLabel(value) }))}
             value={level}
-            onChange={setLevel}
+            onChange={(next) => {
+              leavePasswordForChips();
+              setLevel(next);
+            }}
             allowClear={false}
           />
         </View>
@@ -203,12 +233,6 @@ export default function SignUpScreen() {
           onPress={handleSubmit}
           loading={submitting}
           loadingLabel="Creating your account…"
-          // Nothing incomplete can be submitted, and nothing can be submitted
-          // twice: this is half of why spurious rate-limit errors appeared.
-          disabled={!passwordComplete}
-          accessibilityHint={
-            passwordComplete ? undefined : 'Complete every password requirement to continue.'
-          }
           size="lg"
         />
 
@@ -217,7 +241,7 @@ export default function SignUpScreen() {
             Already have an account?
           </Text>
           <Pressable onPress={() => router.replace('/(auth)/login')} accessibilityRole="button">
-            <Text style={[typography.body, { color: colors.primary, fontWeight: '600' }]}>
+            <Text style={[typography.body, { color: colors.primaryText, fontWeight: '600' }]}>
               Log in
             </Text>
           </Pressable>

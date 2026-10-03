@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { LineChart } from '@/components/charts/LineChart';
 import {
@@ -14,7 +14,9 @@ import {
   Screen,
   SectionHeader,
 } from '@/components/ui';
+import { ExerciseImage } from '@/components/workout/ExerciseImage';
 import { useAsync } from '@/hooks/useAsync';
+import { confirmAction, notify } from '@/lib/alert';
 import {
   equipmentLabel,
   experienceLabel,
@@ -54,29 +56,24 @@ export default function ExerciseDetailScreen() {
 
   const isOwner = Boolean(data?.exercise?.created_by && data.exercise.created_by === user?.id);
 
-  const handleDelete = () => {
-    Alert.alert(
-      'Delete this exercise?',
-      'Workouts that already used it keep their logged sets.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteCustomExercise(id as string);
-              router.back();
-            } catch {
-              Alert.alert(
-                'Could not delete',
-                'This exercise may still be used by a routine. Remove it there first.',
-              );
-            }
-          },
-        },
-      ],
-    );
+  const handleDelete = async () => {
+    const confirmed = await confirmAction({
+      title: 'Delete this exercise?',
+      message: 'Workouts that already used it keep their logged sets.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await deleteCustomExercise(id as string);
+      router.back();
+    } catch {
+      notify(
+        'Could not delete',
+        'This exercise may still be used by a routine. Remove it there first.',
+      );
+    }
   };
 
   // The RPC returns newest first; charts read left-to-right in time order.
@@ -91,7 +88,7 @@ export default function ExerciseDetailScreen() {
             <IconButton
               icon="trash-outline"
               color={colors.danger}
-              onPress={handleDelete}
+              onPress={() => void handleDelete()}
               accessibilityLabel="Delete this custom exercise"
             />
           ) : null
@@ -105,6 +102,14 @@ export default function ExerciseDetailScreen() {
           <ErrorState message="Unable to load this exercise." onRetry={refetch} />
         ) : (
           <View style={{ gap: spacing.xl }}>
+            {/* A banner rather than a thumbnail: this is the one screen whose
+                whole subject is the exercise itself. */}
+            <ExerciseImage
+              name={data.exercise.name}
+              muscle={data.exercise.primary_muscle}
+              size="lg"
+            />
+
             <View style={styles.badges}>
               <Badge label={muscleLabel(data.exercise.primary_muscle)} tone="primary" />
               <Badge label={equipmentLabel(data.exercise.equipment)} />

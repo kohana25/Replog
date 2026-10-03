@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0F172A"
+      "backgroundColor": "#05070B"
     },
     "ios": {
       "supportsTablet": true,
@@ -21,13 +21,13 @@
       "package": "com.replog.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#0F172A"
+        "backgroundColor": "#05070B"
       },
       "edgeToEdgeEnabled": true
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -39,7 +39,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 140,
           "resizeMode": "contain",
-          "backgroundColor": "#0F172A"
+          "backgroundColor": "#05070B"
         }
       ]
     ],

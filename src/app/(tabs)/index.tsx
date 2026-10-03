@@ -1,22 +1,30 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback } from 'react';
-import { ImageBackground, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { WorkoutHistoryCard } from '@/components/workout/Cards';
+import { ExerciseImage } from '@/components/workout/ExerciseImage';
+import { WeekStrip } from '@/components/workout/WeekStrip';
+import { WorkoutCalendar } from '@/components/workout/WorkoutCalendar';
 import {
   Badge,
+  BrandMark,
   Button,
   Card,
   ErrorState,
+  IconButton,
+  InfoHint,
   LoadingState,
-  ProgressBar,
   Screen,
   SectionHeader,
   StatCard,
+  VolumeExplainer,
 } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
 import {
+  daysOfWeek,
+  localDateKey,
   formatRelativeDate,
   greetingForNow,
   pluralize,
@@ -25,23 +33,17 @@ import {
 import { formatWeight } from '@/lib/units';
 import { useActiveWorkout } from '@/providers/ActiveWorkoutProvider';
 import { useAuth } from '@/providers/AuthProvider';
+import { confirmAction, notify } from '@/lib/alert';
 import { useUnit } from '@/providers/SettingsProvider';
 import { getRecentRecords } from '@/services/exercises';
 import { getOverview } from '@/services/progress';
 import { listRoutines } from '@/services/routines';
-import { getRecentWorkouts } from '@/services/workouts';
+import { getRecentWorkouts, getWorkoutDays } from '@/services/workouts';
+import { clearRestDay, getRestDays, markRestDay } from '@/services/rest-days';
 import { useTheme } from '@/theme/ThemeProvider';
-import { palette } from '@/theme/tokens';
-import { useResponsive } from '@/theme/useResponsive';
-
-// Bundled, on-brand background for the "Today's workout" hero. Shipped with the
-// app so the card always has a background (routines carry no image of their own),
-// and dark enough that the overlaid white text stays readable in both themes.
-const WORKOUT_BG = require('@/assets/images/workout-card-bg.png');
 
 export default function HomeScreen() {
   const { colors, typography, spacing } = useTheme();
-  const { isWide, isSmall } = useResponsive();
   const router = useRouter();
   const unit = useUnit();
 
@@ -50,55 +52,129 @@ export default function HomeScreen() {
 
   const { data, error, isLoading, isRefreshing, refresh, refetch } = useAsync(
     async () => {
-      const [overview, routines, recentWorkouts, records] = await Promise.all([
+      const week = daysOfWeek(new Date());
+      const [overview, routines, recentWorkouts, records, weekDays, restDays] = await Promise.all([
         getOverview(),
         listRoutines(),
         getRecentWorkouts(1),
         getRecentRecords(3),
+        getWorkoutDays(week[0], week[6]),
+        getRestDays(week[0], week[6]),
       ]);
-      return { overview, routines, recentWorkouts, records };
+      return { overview, routines, recentWorkouts, records, weekDays, restDays };
     },
     [],
   );
 
+  /**
+   * The calendar loads its own month, so it is told to reload rather than
+   * being threaded through the dashboard query above. Bumping this on focus
+   * is what makes a day fill in as soon as a workout is finished.
+   */
+  const [calendarToken, setCalendarToken] = useState(0);
+  const firstFocus = useRef(true);
+
   // Numbers change every time a workout is saved, so refresh on return.
   useFocusEffect(
     useCallback(() => {
+      // The first focus is the initial mount, which has already loaded.
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
       void refresh();
+      setCalendarToken((token) => token + 1);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []),
   );
 
-  const displayName = (
-    profile?.full_name?.trim() ||
-    profile?.username ||
-    user?.email?.split('@')[0] ||
-    ''
-  ).trim();
+  const displayName = (profile?.full_name?.trim() || profile?.username || '').trim();
 
   const startEmpty = () => {
     startEmptyWorkout();
     router.push('/workout/active');
   };
 
-  const weeklyTarget = Math.max(profile?.training_days?.length ?? 0, 4);
+  const todayKey = localDateKey(new Date());
+  const restedToday = data?.restDays.has(todayKey) ?? false;
+  const [restBusy, setRestBusy] = useState(false);
 
-  // Compact hero: a fraction of the old text-only card's footprint, so the
-  // streak ("This week", below) stays in view the moment Home opens.
-  const heroMinHeight = isSmall ? 140 : isWide ? 176 : 156;
+  const takeRestDay = async () => {
+    if (!user || restBusy) return;
+    setRestBusy(true);
+    try {
+      await markRestDay(user.id);
+      await refresh();
+      setCalendarToken((token) => token + 1);
+    } catch {
+      notify('Could not save', 'Please try again.');
+    } finally {
+      setRestBusy(false);
+    }
+  };
+
+  const undoRestDay = async () => {
+    if (restBusy) return;
+    const confirmed = await confirmAction({
+      title: 'Not resting after all?',
+      message: 'Today goes back to being an ordinary day. Nothing else changes.',
+      confirmLabel: 'Undo rest day',
+    });
+    if (!confirmed) return;
+
+    setRestBusy(true);
+    try {
+      await clearRestDay();
+      await refresh();
+      setCalendarToken((token) => token + 1);
+    } catch {
+      notify('Could not undo', 'Please try again.');
+    } finally {
+      setRestBusy(false);
+    }
+  };
+
+  /**
+   * A goal only exists if the user set one. `training_days` is the days they
+   * chose to train; when it is empty there is no target, and the week is
+   * reported as what happened rather than as a shortfall.
+   */
+  const weeklyGoal = profile?.training_days?.length ?? 0;
 
   return (
     <Screen
       bottomInset={draft ? 64 : 0}
       refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.primary} />
+        <RefreshControl
+          refreshing={isRefreshing}
+          onRefresh={() => {
+            setCalendarToken((token) => token + 1);
+            void refresh();
+          }}
+          tintColor={colors.primary}
+        />
       }
     >
-      <View style={{ marginBottom: spacing.xl }}>
-        <Text style={[typography.body, { color: colors.textMuted }]}>{greetingForNow()}</Text>
-        <Text accessibilityRole="header" style={[typography.h1, { color: colors.text }]}>
-          {displayName || 'Welcome'}
-        </Text>
+      <View style={{ gap: spacing.lg, marginBottom: spacing.xl }}>
+        <View style={styles.headerRow}>
+          <BrandMark size="sm" />
+          <IconButton
+            icon="person-circle-outline"
+            accessibilityLabel="Open your profile"
+            size={30}
+            color={colors.text}
+            onPress={() => router.push('/(tabs)/profile')}
+          />
+        </View>
+        <View>
+          <Text style={[typography.body, { color: colors.textMuted }]}>
+            {greetingForNow()}
+            {displayName ? ',' : ''}
+          </Text>
+          <Text accessibilityRole="header" style={[typography.h1, { color: colors.text }]}>
+            {displayName || 'Welcome'}
+          </Text>
+        </View>
       </View>
 
       {isLoading ? (
@@ -108,79 +184,115 @@ export default function HomeScreen() {
       ) : (
         <View style={{ gap: spacing['2xl'] }}>
           {/* ---------------- Today's workout ---------------- */}
-          {draft ? (
-            <WorkoutHero minHeight={heroMinHeight}>
-              <View style={{ gap: spacing.xs, alignItems: 'flex-start' }}>
-                <Badge label="IN PROGRESS" tone="accent" icon="pulse" />
-                <Text numberOfLines={1} style={[typography.h2, styles.onImageTitle]}>
-                  {draft.name}
+          <Card style={{ gap: spacing.md }}>
+            {restedToday ? (
+              <>
+                <Badge label="REST DAY" tone="accent" icon="bed-outline" />
+                <Text style={[typography.h2, { color: colors.text }]}>Today is recovery</Text>
+                <Text style={[typography.body, { color: colors.textMuted, lineHeight: 21 }]}>
+                  Recovery is part of your progress — this is where the work you already did
+                  turns into strength.
                 </Text>
-                <Text style={[typography.caption, styles.onImageText]}>
+                {/* Resting does not lock the day: someone who changes their
+                    mind can still train, and the rest day simply goes. */}
+                <Button
+                  label="Undo rest day"
+                  variant="secondary"
+                  icon="arrow-undo-outline"
+                  loading={restBusy}
+                  onPress={() => void undoRestDay()}
+                />
+              </>
+            ) : draft ? (
+              <>
+                <Badge label="IN PROGRESS" tone="accent" icon="pulse" />
+                <Text style={[typography.h2, { color: colors.text }]}>{draft.name}</Text>
+                <Text style={[typography.caption, { color: colors.textMuted }]}>
                   {pluralize(draft.exercises.length, 'exercise')} · picked up where you left off
                 </Text>
-              </View>
-              <Button
-                label="Resume workout"
-                icon="play"
-                size="md"
-                onPress={() => router.push('/workout/active')}
-              />
-            </WorkoutHero>
-          ) : data && data.routines.length > 0 ? (
-            <View style={{ gap: spacing.sm }}>
-              <WorkoutHero minHeight={heroMinHeight}>
-                <View style={{ gap: 2 }}>
-                  <Text style={[typography.caption, styles.onImageText]}>
-                    Ready for today&apos;s workout?
-                  </Text>
-                  <Text numberOfLines={1} style={[typography.h2, styles.onImageTitle]}>
-                    {data.routines[0].name}
-                  </Text>
-                  <Text style={[typography.caption, styles.onImageText]}>
-                    {pluralize(data.routines[0].exercise_count, 'exercise')}
-                    {data.routines[0].estimated_duration
-                      ? ` · ~${data.routines[0].estimated_duration} min`
-                      : ''}
-                  </Text>
-                </View>
+                <Button
+                  label="Resume workout"
+                  icon="play"
+                  size="lg"
+                  onPress={() => router.push('/workout/active')}
+                />
+              </>
+            ) : data && data.routines.length > 0 ? (
+              <>
+                {/* The picture of the movement this session opens with —
+                    the spec's "workout card with an exercise image". */}
+                <ExerciseImage
+                  name={data.routines[0].cover_exercise?.name}
+                  muscle={data.routines[0].cover_exercise?.primary_muscle}
+                  size="lg"
+                />
+                <Text style={[typography.caption, { color: colors.textMuted }]}>
+                  Ready for today&apos;s workout?
+                </Text>
+                <Text style={[typography.h2, { color: colors.text }]}>{data.routines[0].name}</Text>
+                <Text style={[typography.caption, { color: colors.textMuted }]}>
+                  {pluralize(data.routines[0].exercise_count, 'exercise')}
+                  {data.routines[0].estimated_duration
+                    ? ` · ~${data.routines[0].estimated_duration} min`
+                    : ''}
+                </Text>
                 <Button
                   label="Start workout"
                   icon="play"
-                  size="md"
+                  size="lg"
                   onPress={() => router.push(`/routines/${data.routines[0].id}`)}
                 />
-              </WorkoutHero>
-              <Button label="Start an empty workout" variant="ghost" size="sm" onPress={startEmpty} />
-            </View>
-          ) : (
-            <View style={{ gap: spacing.sm }}>
-              <WorkoutHero minHeight={heroMinHeight}>
-                <View style={{ gap: spacing.xs }}>
-                  <Text style={[typography.h2, styles.onImageTitle]}>Let&apos;s get started</Text>
-                  <Text style={[typography.body, styles.onImageText, { lineHeight: 21 }]}>
-                    Build a routine you can reuse, or jump straight in and log as you go.
-                  </Text>
-                </View>
+                <Button label="Start an empty workout" variant="ghost" size="sm" onPress={startEmpty} />
+                <Button
+                  label="Mark as rest day"
+                  variant="ghost"
+                  size="sm"
+                  icon="bed-outline"
+                  loading={restBusy}
+                  onPress={() => void takeRestDay()}
+                />
+              </>
+            ) : (
+              <>
+                <Text style={[typography.h2, { color: colors.text }]}>Let&apos;s get started</Text>
+                <Text style={[typography.body, { color: colors.textMuted, lineHeight: 21 }]}>
+                  Build a routine you can reuse, or jump straight in and log as you go.
+                </Text>
                 <Button
                   label="Create a routine"
                   icon="add"
-                  size="md"
+                  size="lg"
                   onPress={() => router.push('/routines/builder')}
                 />
-              </WorkoutHero>
-              <Button label="Start an empty workout" variant="secondary" onPress={startEmpty} />
-            </View>
-          )}
+                <Button label="Start an empty workout" variant="secondary" onPress={startEmpty} />
+                <Button
+                  label="Mark as rest day"
+                  variant="ghost"
+                  size="sm"
+                  icon="bed-outline"
+                  loading={restBusy}
+                  onPress={() => void takeRestDay()}
+                />
+              </>
+            )}
+          </Card>
 
           {/* ---------------- This week ---------------- */}
           {data ? (
             <View style={{ gap: spacing.md }}>
               <SectionHeader title="This week" />
-              <Card style={{ gap: spacing.md }}>
+              <Card style={{ gap: spacing.lg }}>
                 <View style={styles.rowBetween}>
-                  <Text style={[typography.bodyStrong, { color: colors.text }]}>
-                    {data.overview.workouts_this_week} / {weeklyTarget} workouts
-                  </Text>
+                  <View>
+                    <Text style={[typography.bodyStrong, { color: colors.text }]}>
+                      {pluralize(data.overview.workouts_this_week, 'workout')} this week
+                    </Text>
+                    {weeklyGoal > 0 ? (
+                      <Text style={[typography.caption, { color: colors.textMuted }]}>
+                        Goal: {pluralize(weeklyGoal, 'workout')}
+                      </Text>
+                    ) : null}
+                  </View>
                   {data.overview.current_streak_days > 0 ? (
                     <Badge
                       label={`${data.overview.current_streak_days} day streak`}
@@ -189,28 +301,43 @@ export default function HomeScreen() {
                     />
                   ) : null}
                 </View>
-                <ProgressBar
-                  value={data.overview.workouts_this_week}
-                  max={weeklyTarget}
-                  tone="accent"
-                  label={`${data.overview.workouts_this_week} of ${weeklyTarget} workouts this week`}
-                />
+
+                <WeekStrip workoutDays={data.weekDays} restDays={data.restDays} />
               </Card>
 
-              <View style={[styles.statRow, { flexDirection: isWide ? 'row' : 'row' }]}>
+              <View style={styles.statRow}>
                 <StatCard
                   label="Workouts"
                   value={String(data.overview.total_workouts)}
                   icon="barbell-outline"
                 />
-                <StatCard
-                  label="Total volume"
-                  value={formatWeight(data.overview.total_volume, unit)}
-                  icon="trending-up-outline"
-                />
+                <View style={{ flex: 1, minWidth: 150 }}>
+                  <StatCard
+                    label="Total volume"
+                    value={formatWeight(data.overview.total_volume, unit)}
+                    icon="trending-up-outline"
+                  />
+                  {/* Volume is not self-explanatory, so it carries its own
+                      definition rather than being a number nobody can read. */}
+                  <View style={styles.statInfo}>
+                    <InfoHint title="What is Volume?">
+                      <VolumeExplainer />
+                    </InfoHint>
+                  </View>
+                </View>
               </View>
             </View>
           ) : null}
+
+          {/* ---------------- Workout calendar ---------------- */}
+          <View>
+            <SectionHeader
+              title="Workout calendar"
+              action="History"
+              onActionPress={() => router.push('/workout/history')}
+            />
+            <WorkoutCalendar refreshToken={calendarToken} />
+          </View>
 
           {/* ---------------- Recent session ---------------- */}
           {data && data.recentWorkouts.length > 0 ? (
@@ -264,48 +391,10 @@ export default function HomeScreen() {
   );
 }
 
-/**
- * Compact "Today's workout" card whose background IS the workout image.
- * A single scrim (the theme's overlay token) keeps the overlaid white text
- * readable over the image in both light and dark mode. The image is clipped
- * to rounded corners while the shadow is cast by the outer wrapper, so the
- * elevation is not swallowed by `overflow: 'hidden'` on Android.
- */
-function WorkoutHero({
-  children,
-  minHeight,
-}: {
-  children: React.ReactNode;
-  minHeight: number;
-}) {
-  const { colors, radius, spacing, elevation } = useTheme();
-
-  return (
-    <View style={[{ borderRadius: radius.lg, backgroundColor: colors.surface }, elevation.card]}>
-      <ImageBackground
-        source={WORKOUT_BG}
-        resizeMode="cover"
-        accessible={false}
-        style={[styles.heroImage, { minHeight, borderRadius: radius.lg }]}
-        imageStyle={{ borderRadius: radius.lg }}
-      >
-        <View
-          style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay, pointerEvents: 'none' }]}
-        />
-        <View style={[styles.heroContent, { padding: spacing.lg, gap: spacing.md }]}>
-          {children}
-        </View>
-      </ImageBackground>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   statRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
+  statInfo: { position: 'absolute', top: 2, right: 2 },
   recordRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  heroImage: { overflow: 'hidden' },
-  heroContent: { flex: 1, justifyContent: 'space-between' },
-  onImageTitle: { color: palette.white },
-  onImageText: { color: 'rgba(255, 255, 255, 0.86)' },
 });

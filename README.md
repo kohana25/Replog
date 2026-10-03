@@ -1,4 +1,4 @@
-# Movara — Personal Fitness & Workout Management App
+# RepLog — Personal Fitness & Workout Management App
 
 An Expo (React Native) + Supabase workout tracker. Plan routines, log sets fast while you
 train, and see whether the numbers are actually going up.
@@ -33,7 +33,7 @@ anything real. This takes about five minutes.
 
 ### 2.2 Run the migrations
 
-Open **SQL Editor** in the Supabase dashboard and run these four files **in order**, from
+Open **SQL Editor** in the Supabase dashboard and run these files **in order**, from
 `supabase/migrations/`:
 
 | # | File | What it does |
@@ -42,9 +42,12 @@ Open **SQL Editor** in the Supabase dashboard and run these four files **in orde
 | 2 | `0002_rls.sql` | Row Level Security policies |
 | 3 | `0003_functions.sql` | Stats queries + personal-record rules |
 | 4 | `0004_seed_exercises.sql` | 55 starter exercises |
+| 5 | `0005_username_auth.sql` | Username on sign-up + case-insensitive uniqueness |
+| 6 | `0006_suggested_workouts.sql` | Suggested Workouts catalogue tables |
+| 7 | `0007_seed_suggested_workouts.sql` | 36 suggested routines |
 
-Paste each file's contents into a new query and hit Run. All four are safe to run again if
-you need to.
+Paste each file's contents into a new query and hit Run. 0002-0007 are safe to run again;
+re-running 0001 fails on a trigger that already exists, which does no harm.
 
 ### 2.3 Get your keys
 
@@ -56,20 +59,45 @@ you need to.
 > Do **not** copy the `service_role` key. It bypasses Row Level Security, and anything
 > bundled into a mobile app can be extracted from it. It must never leave a server.
 
-### 2.4 Authentication (username + password)
+### 2.4 Turn email confirmation OFF (required)
 
-Movara accounts are **username + password only**. There is no email, no Gmail, no Google
-sign-in, and no email-verification or password-reset flow. Passwords may contain spaces.
+Accounts are a **username and a password**. There is no email address anywhere in the app: no
+confirmation step, no reset link, no inbox.
 
-Supabase Auth still keys every account on an email, so the app maps each username to a
-stable, internal address — `<username>@replog.internal` — that is never shown to anyone and
-is never a real inbox. Because that address can't receive mail, **email confirmation must be
-OFF**, or sign-up would wait forever for a code that can never arrive:
+**Authentication → Sign In / Providers → Email** — uncheck *Confirm email*.
 
-**Authentication → Sign In / Providers → Email** — **uncheck** *Confirm email*.
+This is not optional. Supabase Auth has no username credential, so the app registers each
+account under a synthetic address, `<username>@replog.internal`. `.internal` is reserved by
+ICANN for private use and is never delegated in the public DNS, which is the point: the
+address is unroutable by construction, so no mail can ever reach a stranger's inbox by
+mistake. It also means nothing
+can ever confirm it. Leave *Confirm email* checked and Supabase will withhold the session
+until an address that cannot receive mail is confirmed, producing accounts nobody can log
+into. The app detects that case and says so on screen rather than showing a generic error.
 
-With *Confirm email* off, sign-up returns a session immediately and lands on Home. Accounts,
-passwords and sessions all belong to this project's own Supabase Auth instance.
+The address never leaves `src/services/auth.ts`. Everything above it — screens, provider,
+profile — works in usernames.
+
+Usernames are 3–20 characters, must start with a letter, and allow letters, numbers and
+underscores. They are stored lowercase, so `Alice` and `alice` are one account rather than two
+that look identical. Uniqueness is free: Supabase already requires the address to be unique,
+so a taken username is rejected before any row is written, and `profiles.username` carries a
+`unique` constraint as a second line of defence.
+
+### 2.5 There is no password reset
+
+A forgotten password cannot be recovered. With no address on the account there is nowhere to
+send a reset link, so the *Forgot password?* flow has been removed rather than left as a
+button that cannot work. Both the sign-up and login screens say so before anyone commits to a
+password.
+
+A signed-in user can still change their password — that goes through
+`updatePassword()` in `src/services/auth.ts`, which needs the current session rather than an
+email.
+
+> If you later want recovery back, the smallest change is an optional email field on the
+> profile plus Supabase's standard reset flow. That is a deliberate re-addition, not a
+> setting.
 
 ---
 
@@ -135,33 +163,50 @@ in one place and means a schema change touches one file, not twelve.
 
 ## 5. How the important parts work
 
-### Signing up and logging in (username + password)
+### Signing up with a username
 
-Registration is the app's own, against Supabase Auth in this project. Users only ever type a
-**username and password** — there is no email, no Google sign-in, and no verification step.
+Registration is the app's own, against Supabase Auth in this project. There is no email
+address, no confirmation step and no third-party sign-in — the account, the password and the
+session all belong to this project.
 
 ```
 username + password  →  account created (password hashed by Supabase, never stored by the app)
-                     →  session issued  →  @username saved on the profile  →  Home
+                     →  session returned immediately
+                     →  Home
 ```
 
-Supabase Auth keys accounts on an email, so `src/services/auth.ts` maps each username to a
-stable internal identifier, `<username>@replog.internal`, via `usernameToAuthEmail()`. That
-address is never shown to anyone and is never a real inbox; it exists only so Supabase has
-something to key the account on. Username uniqueness is therefore enforced at the auth layer
-(two accounts can't share the internal email) as well as by the `profiles.username` unique
-constraint. For sign-up to return a session straight away, the project's *Confirm email*
-setting must be **off** (see §2.4) — there is no inbox for a confirmation to reach.
+Supabase Auth authenticates an email and a password, so `src/services/auth.ts` maps the
+username onto a synthetic address — `<username>@replog.internal` — and hands the username
+through in the sign-up metadata. The `handle_new_user()` trigger
+(`supabase/migrations/0005_username_auth.sql`) reads that metadata and seeds
+`profiles.username`, so the username is written once, server-side, rather than by a client
+that could send anything.
 
-The password rules — 8+ characters, a letter, a number and a special character — live in
-`src/lib/validation.ts` as one list. Passwords **may contain spaces** (passphrases are fine);
-a space just doesn't count towards the "special character" requirement. `PasswordRequirements`
-renders that list live under the field and the submit button is disabled until every item
-passes, so the checklist and the button can never disagree.
+The address is an implementation detail and never leaves that one file. Screens, `AuthProvider`
+and the profile all work in usernames.
 
-`src/services/auth.ts` keeps one in-flight promise per operation, so a double tap or the
-keyboard's "go" key landing on the same frame as a press joins the request already running
-instead of starting a second one.
+Two properties fall out of the mapping. Usernames are unique for free, because Supabase
+already requires the address to be unique — a taken username comes back as the same
+"user with no identities" response a taken address does, which is what `usernameTaken`
+detects. And usernames are case-insensitive, because both the app and the trigger lowercase
+before storing, so `Alice` and `alice` cannot become two accounts that look the same.
+
+Input is sanitized as it is typed, not only on submit: typing `Richard M!!` into the username
+field leaves `richardm` in it, so the value that reaches validation is already one that can
+be a username.
+
+The password rules — 8+ characters, a number, a special character, no spaces — live in
+`src/lib/validation.ts` as one list. `PasswordRequirements` renders that list live under the
+field **while the password field has focus**, and hides when any other field takes focus;
+`validatePassword` checks the same list on submit and names whatever is still missing, so the
+rules the user is shown and the rules the form enforces cannot drift apart.
+
+### Preventing duplicate requests
+
+A double tap, or the keyboard's "go" key landing on the same frame as a press, used to send
+two identical requests — and the second one is what Supabase counts towards a rate limit.
+`src/services/auth.ts` keeps one in-flight promise per operation, so a duplicate call joins
+the request already running instead of starting another.
 
 ### Staying logged in
 
@@ -231,6 +276,61 @@ The number of consecutive calendar days with at least one completed workout, cou
 from today — or from yesterday if you have not trained yet today. Computed in the device's
 timezone, not UTC, so it matches the calendar you actually look at.
 
+### Suggested Workouts
+
+The Workout tab suggests routines from the two answers the profile already holds:
+`fitness_goal` and `experience_level`. Those are the only inputs. There are 6 goals and 3
+levels, so 18 combinations, and the catalogue holds two routines for each — 36 in all.
+
+The catalogue lives in `suggested_routines` and `suggested_routine_exercises`, separate from
+`workout_routines` because that table is per-user by construction: `user_id` is NOT NULL and
+its policy is `user_id = auth.uid()`. Holding shared routines there would have meant a
+nullable owner and a weaker policy on the table containing everyone's private routines. The
+catalogue is read-only through the API — a SELECT policy and no write policies at all.
+
+Every suggested exercise is a foreign key into the existing `exercises` library, so a
+suggestion can never introduce a duplicate exercise, and `0007` fails rather than quietly
+producing a shorter routine if a name does not resolve.
+
+Starting one goes through the normal logger. `workouts.routine_id` is a foreign key into
+`workout_routines`, and a suggestion is not a row there, so a workout started from a
+suggestion saves with `routine_id` NULL — otherwise identical, including history and personal
+records. "Add to my routines" copies it through the existing `createRoutine()`, after which it
+behaves exactly like a routine you built yourself.
+
+**Height and weight are not inputs.** They stay where they were, on `profiles` and in
+`body_measurements`, for body metrics and progress. Body size alone does not say which
+routine suits somebody, so nothing here reads it.
+
+Each routine carries a short `source_reference` naming the public guidance its shape follows
+(HHS Physical Activity Guidelines, CDC, ACE). The routines are RepLog's own; no source text is
+reproduced. They are general fitness guidance, not medical advice.
+
+### Exercise images
+
+Each exercise in the library carries a photograph, shown on the Home workout
+card, in the exercise library and picker, on the active workout screen, and as
+a banner on the exercise detail screen.
+
+**Source and licence.** The photographs come from
+[free-exercise-db](https://github.com/yuhonas/free-exercise-db), released under
+**The Unlicense** — a public-domain dedication, so they may be used and
+redistributed freely and **no attribution is required**. This section documents
+the provenance anyway, because a licence you cannot name is a licence you
+cannot rely on.
+
+They are bundled in `assets/exercises/` rather than fetched at runtime, so the
+app works offline and does not depend on anyone else's uptime. Each is resized
+to 480px wide and re-encoded, which keeps all 54 to about 1.3 MB.
+
+`src/lib/exercise-images.ts` maps an exercise to its picture **by normalised
+name**, not by id: ids are per-database uuids, whereas the names of the public
+library are stable and are what `0004` seeds. 54 of the 55 seeded exercises
+have a photograph; Burpee has none in the dataset, and custom exercises a user
+creates never will, so `ExerciseImage` falls back to a muscle-group icon on a
+tinted tile. That fallback is the normal case for custom exercises rather than
+an error, and it also catches an image that fails to decode.
+
 ---
 
 ## 6. Security
@@ -244,9 +344,12 @@ timezone, not UTC, so it matches the calendar you actually look at.
   Custom exercises are private to whoever created them.
 - Passwords are sent straight to Supabase Auth, which stores a bcrypt hash. The app never
   stores, logs or transmits a password anywhere else, and never sees the stored hash.
-- Users authenticate with a username and password only. Each username maps to an internal,
-  non-routable identifier (`<username>@replog.internal`) that is never shown and never emailed;
-  it exists only because Supabase Auth keys accounts on an email.
+- Accounts hold no email address. Nothing in the database identifies a person beyond the
+  username they chose and whatever they put in their profile.
+- The flip side, stated plainly: there is no account recovery. Losing a password loses the
+  account, and an attacker who guesses one has no second factor to get past.
+- Usernames are the only public identifier, and `profiles.username` is `unique`, so two
+  accounts can never share one.
 - The app ships only the publishable key. The service-role key appears nowhere.
 - Logging out clears the local session. It never deletes your data.
 
@@ -284,11 +387,14 @@ npm run typecheck
 
 ### Manual checks worth doing on a device
 
-**Registration** — sign up with a username and a password like `Fitness1!`. Watch the
-requirement list turn green as you type; the button stays disabled until it all does. Try
-`password` (no number, no special character) and confirm a passphrase with spaces such as
-`my strong pass 1!` is accepted. Submit — you should land on **Home**, already signed in,
-without any email or verification step. Signing up with a username that is taken should say so.
+**Registration** — sign up with a username and a password like `Fitness1!`. Type `Richard M!!`
+into the username field: it should become `richardm` as you type. Tap the password field: the
+requirement list appears under it and turns green as you type. Tap the name, username or
+confirm field: it disappears. Tap the password field again: it is back. Then try `ab` (too
+short), `9lifter` (must start with a letter), `password` (submit tells you it needs a number
+and a special character) and `Pass 123!` (rejected for the space). Submit a good one: you
+should land on **Home** immediately, with no confirmation step. Sign up again with the same
+username and it should be refused as taken.
 
 **Session** — sign up, force-quit the app, reopen it. You should land on Home with no login
 screen at any point. Then log out and back in; your data should still be there.
@@ -306,8 +412,8 @@ horizontal scrolling, no clipped text, nothing under the notch or home indicator
 
 ## 8. What is and is not built
 
-**Working, end to end:** username + password sign-up, login, logout,
-persistent sessions, profile,
+**Working, end to end:** sign-up and login with a username, logout, persistent sessions,
+profile,
 exercise library with search and filters, custom exercises, routine create/edit/delete/
 duplicate, live workout logging with previous-performance hints, rest timer, supersets field
 (stored, minimal UI), workout history with pagination, workout detail, exercise history and
@@ -343,7 +449,11 @@ background sync. Supersets can be stored on a routine but there is no grouping U
 | --- | --- |
 | "Finish the Supabase setup" screen | `.env` missing or malformed; restart with `npx expo start -c` |
 | Expo Go SDK mismatch | `npx expo install --fix` |
-| Sign-up never lands on Home | *Confirm email* is still on — turn it **off** so sign-up returns a session (§2.4) |
+| "This project still has email confirmation switched on" | Uncheck *Confirm email* under Authentication → Sign In / Providers (§2.4) |
+| Sign-up says the username is taken when it should not be | Usernames are case-insensitive and stored lowercase, so `Alice` and `alice` are one account (§2.4) |
+| Forgot my password | It cannot be reset — there is no address to send a link to. Create a new account (§2.5) |
 | Exercises list is empty | `0004_seed_exercises.sql` has not been run |
 | "You do not have permission" | RLS migration `0002_rls.sql` has not been run |
 | Stale bundle after editing `.env` | `npx expo start -c` |
+| Metro dies with `Fatal process out of memory` while bundling | Usually low RAM during the web bundle. Close other apps, or raise Node's heap: PowerShell `$env:NODE_OPTIONS="--max-old-space-size=4096"; npx expo start`, bash `NODE_OPTIONS=--max-old-space-size=4096 npx expo start` |
+| Windows: slow bundling, file-watcher errors, random crashes | Move the project out of a OneDrive-synced folder (e.g. `C:\dev\replog`). OneDrive syncing `node_modules` fights with Metro's watcher |

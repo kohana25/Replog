@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { LineChart } from '@/components/charts/LineChart';
 import {
@@ -17,6 +17,7 @@ import {
   SectionHeader,
 } from '@/components/ui';
 import { useAsync } from '@/hooks/useAsync';
+import { confirmAction, notify } from '@/lib/alert';
 import { formatRelativeDate } from '@/lib/format';
 import { parseNumericInput, parseWeightInput, weightInputValue } from '@/lib/units';
 import { dataErrorMessage } from '@/lib/validation';
@@ -80,22 +81,21 @@ export default function MeasurementsScreen() {
     }
   };
 
-  const handleDelete = (id: string) => {
-    Alert.alert('Delete entry?', 'This measurement will be removed.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteMeasurement(id);
-            await refetch();
-          } catch {
-            Alert.alert('Could not delete', 'Please try again.');
-          }
-        },
-      },
-    ]);
+  const handleDelete = async (id: string) => {
+    const confirmed = await confirmAction({
+      title: 'Delete entry?',
+      message: 'This measurement will be removed.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await deleteMeasurement(id);
+      await refetch();
+    } catch {
+      notify('Could not delete', 'Please try again.');
+    }
   };
 
   // Oldest-first for the chart; the list below stays newest-first.
@@ -203,7 +203,7 @@ export default function MeasurementsScreen() {
                           icon="trash-outline"
                           size={18}
                           color={colors.danger}
-                          onPress={() => handleDelete(entry.id)}
+                          onPress={() => void handleDelete(entry.id)}
                           accessibilityLabel={`Delete entry from ${formatRelativeDate(entry.measured_on)}`}
                         />
                       </View>
