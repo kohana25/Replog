@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback } from 'react';
-import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ImageBackground, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { WorkoutHistoryCard } from '@/components/workout/Cards';
 import {
@@ -31,11 +31,17 @@ import { getOverview } from '@/services/progress';
 import { listRoutines } from '@/services/routines';
 import { getRecentWorkouts } from '@/services/workouts';
 import { useTheme } from '@/theme/ThemeProvider';
+import { palette } from '@/theme/tokens';
 import { useResponsive } from '@/theme/useResponsive';
+
+// Bundled, on-brand background for the "Today's workout" hero. Shipped with the
+// app so the card always has a background (routines carry no image of their own),
+// and dark enough that the overlaid white text stays readable in both themes.
+const WORKOUT_BG = require('@/assets/images/workout-card-bg.png');
 
 export default function HomeScreen() {
   const { colors, typography, spacing } = useTheme();
-  const { isWide } = useResponsive();
+  const { isWide, isSmall } = useResponsive();
   const router = useRouter();
   const unit = useUnit();
 
@@ -72,6 +78,10 @@ export default function HomeScreen() {
 
   const weeklyTarget = Math.max(profile?.training_days?.length ?? 0, 4);
 
+  // Compact hero: a fraction of the old text-only card's footprint, so the
+  // streak ("This week", below) stays in view the moment Home opens.
+  const heroMinHeight = isSmall ? 140 : isWide ? 176 : 156;
+
   return (
     <Screen
       bottomInset={draft ? 64 : 0}
@@ -93,57 +103,69 @@ export default function HomeScreen() {
       ) : (
         <View style={{ gap: spacing['2xl'] }}>
           {/* ---------------- Today's workout ---------------- */}
-          <Card style={{ gap: spacing.md }}>
-            {draft ? (
-              <>
+          {draft ? (
+            <WorkoutHero minHeight={heroMinHeight}>
+              <View style={{ gap: spacing.xs, alignItems: 'flex-start' }}>
                 <Badge label="IN PROGRESS" tone="accent" icon="pulse" />
-                <Text style={[typography.h2, { color: colors.text }]}>{draft.name}</Text>
-                <Text style={[typography.caption, { color: colors.textMuted }]}>
+                <Text numberOfLines={1} style={[typography.h2, styles.onImageTitle]}>
+                  {draft.name}
+                </Text>
+                <Text style={[typography.caption, styles.onImageText]}>
                   {pluralize(draft.exercises.length, 'exercise')} · picked up where you left off
                 </Text>
-                <Button
-                  label="Resume workout"
-                  icon="play"
-                  size="lg"
-                  onPress={() => router.push('/workout/active')}
-                />
-              </>
-            ) : data && data.routines.length > 0 ? (
-              <>
-                <Text style={[typography.caption, { color: colors.textMuted }]}>
-                  Ready for today&apos;s workout?
-                </Text>
-                <Text style={[typography.h2, { color: colors.text }]}>{data.routines[0].name}</Text>
-                <Text style={[typography.caption, { color: colors.textMuted }]}>
-                  {pluralize(data.routines[0].exercise_count, 'exercise')}
-                  {data.routines[0].estimated_duration
-                    ? ` · ~${data.routines[0].estimated_duration} min`
-                    : ''}
-                </Text>
+              </View>
+              <Button
+                label="Resume workout"
+                icon="play"
+                size="md"
+                onPress={() => router.push('/workout/active')}
+              />
+            </WorkoutHero>
+          ) : data && data.routines.length > 0 ? (
+            <View style={{ gap: spacing.sm }}>
+              <WorkoutHero minHeight={heroMinHeight}>
+                <View style={{ gap: 2 }}>
+                  <Text style={[typography.caption, styles.onImageText]}>
+                    Ready for today&apos;s workout?
+                  </Text>
+                  <Text numberOfLines={1} style={[typography.h2, styles.onImageTitle]}>
+                    {data.routines[0].name}
+                  </Text>
+                  <Text style={[typography.caption, styles.onImageText]}>
+                    {pluralize(data.routines[0].exercise_count, 'exercise')}
+                    {data.routines[0].estimated_duration
+                      ? ` · ~${data.routines[0].estimated_duration} min`
+                      : ''}
+                  </Text>
+                </View>
                 <Button
                   label="Start workout"
                   icon="play"
-                  size="lg"
+                  size="md"
                   onPress={() => router.push(`/routines/${data.routines[0].id}`)}
                 />
-                <Button label="Start an empty workout" variant="ghost" size="sm" onPress={startEmpty} />
-              </>
-            ) : (
-              <>
-                <Text style={[typography.h2, { color: colors.text }]}>Let&apos;s get started</Text>
-                <Text style={[typography.body, { color: colors.textMuted, lineHeight: 21 }]}>
-                  Build a routine you can reuse, or jump straight in and log as you go.
-                </Text>
+              </WorkoutHero>
+              <Button label="Start an empty workout" variant="ghost" size="sm" onPress={startEmpty} />
+            </View>
+          ) : (
+            <View style={{ gap: spacing.sm }}>
+              <WorkoutHero minHeight={heroMinHeight}>
+                <View style={{ gap: spacing.xs }}>
+                  <Text style={[typography.h2, styles.onImageTitle]}>Let&apos;s get started</Text>
+                  <Text style={[typography.body, styles.onImageText, { lineHeight: 21 }]}>
+                    Build a routine you can reuse, or jump straight in and log as you go.
+                  </Text>
+                </View>
                 <Button
                   label="Create a routine"
                   icon="add"
-                  size="lg"
+                  size="md"
                   onPress={() => router.push('/routines/builder')}
                 />
-                <Button label="Start an empty workout" variant="secondary" onPress={startEmpty} />
-              </>
-            )}
-          </Card>
+              </WorkoutHero>
+              <Button label="Start an empty workout" variant="secondary" onPress={startEmpty} />
+            </View>
+          )}
 
           {/* ---------------- This week ---------------- */}
           {data ? (
@@ -237,8 +259,49 @@ export default function HomeScreen() {
   );
 }
 
+/**
+ * Compact "Today's workout" card whose background IS the workout image.
+ * A single scrim (the theme's overlay token) keeps the overlaid white text
+ * readable over the image in both light and dark mode. The image is clipped
+ * to rounded corners while the shadow is cast by the outer wrapper, so the
+ * elevation is not swallowed by `overflow: 'hidden'` on Android.
+ */
+function WorkoutHero({
+  children,
+  minHeight,
+}: {
+  children: React.ReactNode;
+  minHeight: number;
+}) {
+  const { colors, radius, spacing, elevation } = useTheme();
+
+  return (
+    <View style={[{ borderRadius: radius.lg, backgroundColor: colors.surface }, elevation.card]}>
+      <ImageBackground
+        source={WORKOUT_BG}
+        resizeMode="cover"
+        accessible={false}
+        style={[styles.heroImage, { minHeight, borderRadius: radius.lg }]}
+        imageStyle={{ borderRadius: radius.lg }}
+      >
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay }]}
+        />
+        <View style={[styles.heroContent, { padding: spacing.lg, gap: spacing.md }]}>
+          {children}
+        </View>
+      </ImageBackground>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   statRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
   recordRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  heroImage: { overflow: 'hidden' },
+  heroContent: { flex: 1, justifyContent: 'space-between' },
+  onImageTitle: { color: palette.white },
+  onImageText: { color: 'rgba(255, 255, 255, 0.86)' },
 });
