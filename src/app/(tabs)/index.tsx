@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useRef, useState } from 'react';
-import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ImageBackground, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { WorkoutHistoryCard } from '@/components/workout/Cards';
-import { ExerciseImage } from '@/components/workout/ExerciseImage';
+import { exerciseImage } from '@/lib/exercise-images';
 import { WeekStrip } from '@/components/workout/WeekStrip';
 import { WorkoutCalendar } from '@/components/workout/WorkoutCalendar';
 import {
@@ -42,8 +42,11 @@ import { getRecentWorkouts, getWorkoutDays } from '@/services/workouts';
 import { clearRestDay, getRestDays, markRestDay } from '@/services/rest-days';
 import { useTheme } from '@/theme/ThemeProvider';
 
+/** Compact workout hero height — a fraction of the old full-width banner card. */
+const HERO_MIN_HEIGHT = 150;
+
 export default function HomeScreen() {
-  const { colors, typography, spacing } = useTheme();
+  const { colors, typography, spacing, radius, elevation } = useTheme();
   const router = useRouter();
   const unit = useUnit();
 
@@ -184,98 +187,112 @@ export default function HomeScreen() {
       ) : (
         <View style={{ gap: spacing['2xl'] }}>
           {/* ---------------- Today's workout ---------------- */}
-          <Card style={{ gap: spacing.md }}>
-            {restedToday ? (
-              <>
-                <Badge label="REST DAY" tone="accent" icon="bed-outline" />
-                <Text style={[typography.h2, { color: colors.text }]}>Today is recovery</Text>
-                <Text style={[typography.body, { color: colors.textMuted, lineHeight: 21 }]}>
-                  Recovery is part of your progress — this is where the work you already did
-                  turns into strength.
-                </Text>
-                {/* Resting does not lock the day: someone who changes their
-                    mind can still train, and the rest day simply goes. */}
-                <Button
-                  label="Undo rest day"
-                  variant="secondary"
-                  icon="arrow-undo-outline"
-                  loading={restBusy}
-                  onPress={() => void undoRestDay()}
-                />
-              </>
-            ) : draft ? (
-              <>
-                <Badge label="IN PROGRESS" tone="accent" icon="pulse" />
-                <Text style={[typography.h2, { color: colors.text }]}>{draft.name}</Text>
-                <Text style={[typography.caption, { color: colors.textMuted }]}>
-                  {pluralize(draft.exercises.length, 'exercise')} · picked up where you left off
-                </Text>
-                <Button
-                  label="Resume workout"
-                  icon="play"
-                  size="lg"
-                  onPress={() => router.push('/workout/active')}
-                />
-              </>
-            ) : data && data.routines.length > 0 ? (
-              <>
-                {/* The picture of the movement this session opens with —
-                    the spec's "workout card with an exercise image". */}
-                <ExerciseImage
-                  name={data.routines[0].cover_exercise?.name}
-                  muscle={data.routines[0].cover_exercise?.primary_muscle}
-                  size="lg"
-                />
-                <Text style={[typography.caption, { color: colors.textMuted }]}>
-                  Ready for today&apos;s workout?
-                </Text>
-                <Text style={[typography.h2, { color: colors.text }]}>{data.routines[0].name}</Text>
-                <Text style={[typography.caption, { color: colors.textMuted }]}>
-                  {pluralize(data.routines[0].exercise_count, 'exercise')}
-                  {data.routines[0].estimated_duration
-                    ? ` · ~${data.routines[0].estimated_duration} min`
-                    : ''}
-                </Text>
-                <Button
-                  label="Start workout"
-                  icon="play"
-                  size="lg"
-                  onPress={() => router.push(`/routines/${data.routines[0].id}`)}
-                />
-                <Button label="Start an empty workout" variant="ghost" size="sm" onPress={startEmpty} />
-                <Button
-                  label="Mark as rest day"
-                  variant="ghost"
-                  size="sm"
-                  icon="bed-outline"
-                  loading={restBusy}
-                  onPress={() => void takeRestDay()}
-                />
-              </>
-            ) : (
-              <>
-                <Text style={[typography.h2, { color: colors.text }]}>Let&apos;s get started</Text>
-                <Text style={[typography.body, { color: colors.textMuted, lineHeight: 21 }]}>
-                  Build a routine you can reuse, or jump straight in and log as you go.
-                </Text>
-                <Button
-                  label="Create a routine"
-                  icon="add"
-                  size="lg"
-                  onPress={() => router.push('/routines/builder')}
-                />
-                <Button label="Start an empty workout" variant="secondary" onPress={startEmpty} />
-                <Button
-                  label="Mark as rest day"
-                  variant="ghost"
-                  size="sm"
-                  icon="bed-outline"
-                  loading={restBusy}
-                  onPress={() => void takeRestDay()}
-                />
-              </>
-            )}
-          </Card>
+          {restedToday ? (
+            <Card style={{ gap: spacing.md }}>
+              <Badge label="REST DAY" tone="accent" icon="bed-outline" />
+              <Text style={[typography.h2, { color: colors.text }]}>Today is recovery</Text>
+              <Text style={[typography.body, { color: colors.textMuted, lineHeight: 21 }]}>
+                Recovery is part of your progress — this is where the work you already did
+                turns into strength.
+              </Text>
+              {/* Resting does not lock the day: someone who changes their
+                  mind can still train, and the rest day simply goes. */}
+              <Button
+                label="Undo rest day"
+                variant="secondary"
+                icon="arrow-undo-outline"
+                loading={restBusy}
+                onPress={() => void undoRestDay()}
+              />
+            </Card>
+          ) : draft ? (
+            <Card style={{ gap: spacing.md }}>
+              <Badge label="IN PROGRESS" tone="accent" icon="pulse" />
+              <Text style={[typography.h2, { color: colors.text }]}>{draft.name}</Text>
+              <Text style={[typography.caption, { color: colors.textMuted }]}>
+                {pluralize(draft.exercises.length, 'exercise')} · picked up where you left off
+              </Text>
+              <Button
+                label="Resume workout"
+                icon="play"
+                size="lg"
+                onPress={() => router.push('/workout/active')}
+              />
+            </Card>
+          ) : data && data.routines.length > 0 ? (
+            <View style={{ gap: spacing.sm }}>
+              {/* Compact hero: the exercise image IS the card's background, with
+                  the three workout texts and the start action laid over a dark
+                  scrim so they stay readable. A fraction of the old full-banner
+                  card's height, so "This week" (and its streak) stay in view. */}
+              <View style={[styles.hero, { borderRadius: radius.lg }, elevation.card]}>
+                <ImageBackground
+                  source={exerciseImage(data.routines[0].cover_exercise?.name)}
+                  resizeMode="cover"
+                  accessible={false}
+                  style={[styles.heroImage, { minHeight: HERO_MIN_HEIGHT, borderRadius: radius.lg }]}
+                  imageStyle={{ borderRadius: radius.lg }}
+                >
+                  <View
+                    style={[StyleSheet.absoluteFill, styles.heroScrim, { borderRadius: radius.lg }]}
+                  />
+                  <View style={[styles.heroContent, { padding: spacing.lg, gap: spacing.md }]}>
+                    <View style={{ gap: 2 }}>
+                      <Text style={[typography.caption, styles.onImageMuted]}>
+                        Ready for today&apos;s workout?
+                      </Text>
+                      <Text numberOfLines={1} style={[typography.h2, styles.onImageTitle]}>
+                        {data.routines[0].name}
+                      </Text>
+                      <Text style={[typography.caption, styles.onImageMuted]}>
+                        {pluralize(data.routines[0].exercise_count, 'exercise')}
+                        {data.routines[0].estimated_duration
+                          ? ` · ~${data.routines[0].estimated_duration} min`
+                          : ''}
+                      </Text>
+                    </View>
+                    <Button
+                      label="Start workout"
+                      icon="play"
+                      size="md"
+                      onPress={() => router.push(`/routines/${data.routines[0].id}`)}
+                    />
+                  </View>
+                </ImageBackground>
+              </View>
+              <Button label="Start an empty workout" variant="ghost" size="sm" onPress={startEmpty} />
+              <Button
+                label="Mark as rest day"
+                variant="ghost"
+                size="sm"
+                icon="bed-outline"
+                loading={restBusy}
+                onPress={() => void takeRestDay()}
+              />
+            </View>
+          ) : (
+            <Card style={{ gap: spacing.md }}>
+              <Text style={[typography.h2, { color: colors.text }]}>Let&apos;s get started</Text>
+              <Text style={[typography.body, { color: colors.textMuted, lineHeight: 21 }]}>
+                Build a routine you can reuse, or jump straight in and log as you go.
+              </Text>
+              <Button
+                label="Create a routine"
+                icon="add"
+                size="lg"
+                onPress={() => router.push('/routines/builder')}
+              />
+              <Button label="Start an empty workout" variant="secondary" onPress={startEmpty} />
+              <Button
+                label="Mark as rest day"
+                variant="ghost"
+                size="sm"
+                icon="bed-outline"
+                loading={restBusy}
+                onPress={() => void takeRestDay()}
+              />
+            </Card>
+          )}
 
           {/* ---------------- This week ---------------- */}
           {data ? (
@@ -397,4 +414,13 @@ const styles = StyleSheet.create({
   statRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
   statInfo: { position: 'absolute', top: 2, right: 2 },
   recordRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  // Workout hero: dark fallback behind the image so overlaid white text stays
+  // readable even for an exercise with no bundled photo. The image is clipped
+  // to rounded corners by heroImage; the shadow is cast by the outer wrapper.
+  hero: { backgroundColor: '#0B1017' },
+  heroImage: { overflow: 'hidden' },
+  heroScrim: { backgroundColor: 'rgba(5, 7, 11, 0.55)', pointerEvents: 'none' },
+  heroContent: { flex: 1, justifyContent: 'space-between' },
+  onImageTitle: { color: '#FFFFFF' },
+  onImageMuted: { color: 'rgba(255, 255, 255, 0.88)' },
 });
